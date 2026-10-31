@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Turf Lens｜過去データで読む競馬分析・予想ツール</title>
+  <meta name="description" content="過去のレース結果CSVを読み込み、人気・枠・騎手・調教師・距離・馬場ごとの勝率と回収率を集計。出走表から推定勝率と期待値を算出し、バックテストで精度を検証できる競馬分析ツールです。">
+  <meta property="og:title" content="Turf Lens｜過去データで読む競馬分析・予想ツール">
+  <meta property="og:type" content="website">
+  <meta property="og:image" content="images/ogp-turf-lens.png">
+  <link rel="icon" href="images/favicon-turf-lens.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+  <link rel="stylesheet" href="css/style.css">
+  <script src="js/analyzer.js" defer></script>
+  <script src="js/app.js" defer></script>
+</head>
+<body>
+
+  <!-- ===== Header ===== -->
+  <header class="header">
+    <div class="header__inner">
+      <a class="header__logo" href="#top">
+        <img class="header__logo-icon" src="images/favicon-turf-lens.svg" alt="" width="28" height="28">
+        <span class="header__logo-text">Turf Lens</span>
+      </a>
+      <nav class="header__nav" aria-label="メインメニュー">
+        <ul class="header__list">
+          <li><a class="header__link" href="#data">データ</a></li>
+          <li><a class="header__link" href="#analysis">傾向分析</a></li>
+          <li><a class="header__link" href="#backtest">精度検証</a></li>
+          <li><a class="header__link" href="#notes">注意事項</a></li>
+        </ul>
+      </nav>
+      <a class="btn btn--primary btn--small header__cta" href="#predict">予想する</a>
+    </div>
+  </header>
+
+  <main id="top">
+
+    <!-- ===== Hero ===== -->
+    <section class="hero">
+      <div class="hero__inner">
+        <p class="hero__eyebrow js-fade">DATA-DRIVEN HANDICAPPING</p>
+        <h1 class="hero__title js-fade">
+          勘より、<br class="u-sp-only">過去の数字で選ぶ。
+        </h1>
+        <p class="hero__lead js-fade">
+          過去のレース結果を読み込むと、人気・枠・騎手・距離ごとの勝率と回収率を集計します。<br class="u-pc-only">
+          出走表から推定勝率と期待値を出し、その予想が過去に通用したかも検証できます。
+        </p>
+        <div class="hero__actions js-fade">
+          <a class="btn btn--accent" href="#data">データを読み込む</a>
+          <a class="btn btn--ghost" href="#notes">仕組みと限界を見る</a>
+        </div>
+        <ol class="hero__steps js-fade" aria-label="使い方">
+          <li class="hero__step"><span class="hero__step-num">01</span>過去成績CSVを読込</li>
+          <li class="hero__step"><span class="hero__step-num">02</span>傾向を分析</li>
+          <li class="hero__step"><span class="hero__step-num">03</span>出走表から予想</li>
+          <li class="hero__step"><span class="hero__step-num">04</span>過去データで検証</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- ===== Section: データ読込 ===== -->
+    <section class="section" id="data" aria-labelledby="data-title">
+      <div class="section__inner">
+        <header class="section__head js-fade">
+          <p class="section__num">01</p>
+          <h2 class="section__title" id="data-title">過去成績を読み込む</h2>
+          <p class="section__lead">1行＝1頭の出走結果。データは端末内で処理され、外部へ送信されません。</p>
+        </header>
+
+        <div class="grid grid--2">
+          <!-- CSVアップロード -->
+          <form class="card form js-fade" id="dataForm" novalidate>
+            <h3 class="card__title">CSVファイル</h3>
+            <div class="field">
+              <label class="field__label" for="csvFile">過去成績CSV <span class="field__req">必須</span></label>
+              <input class="field__file" type="file" id="csvFile" name="csvFile" accept=".csv,.tsv,.txt,text/csv" required>
+              <p class="field__hint">ヘッダー行が必要です（列の詳細は右の仕様を参照）。</p>
+            </div>
+            <div class="field">
+              <label class="field__label" for="csvEncoding">文字コード</label>
+              <select class="field__control" id="csvEncoding" name="csvEncoding" required>
+                <option value="utf-8">UTF-8</option>
+                <option value="shift_jis">Shift_JIS（Excel保存のCSVなど）</option>
+              </select>
+            </div>
+            <div class="form__actions">
+              <button class="btn btn--primary" type="submit">読み込む</button>
+              <button class="btn btn--outline" type="button" id="sampleBtn">デモ用の架空データで試す</button>
+            </div>
+            <p class="form__message" id="dataStatus" role="status" aria-live="polite"></p>
+          </form>
+
+          <!-- CSV仕様 -->
+          <div class="card card--muted js-fade">
+            <h3 class="card__title">CSVの列仕様</h3>
+            <ul class="spec-list">
+              <li class="spec-list__item"><span class="tag tag--req">必須</span>日付 / 競馬場 / 距離 / 馬名 / 着順</li>
+              <li class="spec-list__item"><span class="tag tag--req">必須</span>レース番号（またはレースID・レース名）</li>
+              <li class="spec-list__item"><span class="tag">推奨</span>芝ダ / 馬場 / 枠番 / 馬番 / 騎手 / 調教師 / 人気 / 単勝オッズ</li>
+            </ul>
+            <p class="card__text">
+              単勝オッズが無いと回収率と期待値は計算できません。着順が「取消・除外・中止」など数字でない行は集計から除きます。
+            </p>
+            <a class="text-link" href="data/template-results.csv" download>テンプレートCSVをダウンロード</a>
+          </div>
+        </div>
+
+        <!-- データ概要 -->
+        <div class="summary" id="summaryWrap" hidden>
+          <p class="notice notice--warn" id="demoBadge" hidden>
+            いま表示中のデータは <strong>動作確認用の架空データ</strong> です。実在のレース結果ではないため、馬券の判断には使えません。
+          </p>
+          <div class="grid grid--4">
+            <div class="stat-card js-fade">
+              <p class="stat-card__label">レース数</p>
+              <p class="stat-card__value" id="sumRaces">—</p>
+            </div>
+            <div class="stat-card js-fade">
+              <p class="stat-card__label">出走頭数</p>
+              <p class="stat-card__value" id="sumRunners">—</p>
+            </div>
+            <div class="stat-card js-fade">
+              <p class="stat-card__label">1番人気の勝率</p>
+              <p class="stat-card__value" id="sumFav">—</p>
+            </div>
+            <div class="stat-card js-fade">
+              <p class="stat-card__label">全頭の単勝回収率</p>
+              <p class="stat-card__value" id="sumRecovery">—</p>
+            </div>
+          </div>
+          <p class="summary__meta" id="sumMeta"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Section: 傾向分析 ===== -->
+    <section class="section section--tint" id="analysis" aria-labelledby="analysis-title">
+      <div class="section__inner">
+        <header class="section__head js-fade">
+          <p class="section__num">02</p>
+          <h2 class="section__title" id="analysis-title">傾向を分析する</h2>
+          <p class="section__lead">勝率だけでなく回収率（100%超で過去はプラス）を見るのが要点です。</p>
+        </header>
+
+        <p class="empty-state js-fade" id="analysisEmpty">データを読み込むと集計結果が表示されます。</p>
+
+        <div class="card card--flush js-fade" id="analysisBody" hidden>
+          <div class="toolbar">
+            <div class="tabs" role="tablist" aria-label="集計の切り口">
+              <button class="tabs__btn is-active" type="button" role="tab" aria-selected="true" data-dim="popularity">人気</button>
+              <button class="tabs__btn" type="button" role="tab" aria-selected="false" data-dim="frame">枠番</button>
+              <button class="tabs__btn" type="button" role="tab" aria-selected="false" data-dim="jockey">騎手</button>
+              <button class="tabs__btn" type="button" role="tab" aria-selected="false" data-dim="trainer">調教師</button>
+              <button class="tabs__btn" type="button" role="tab" aria-selected="false" data-dim="distance">距離</button>
+              <button class="tabs__btn" type="button" role="tab" aria-selected="false" data-dim="going">馬場</button>
+            </div>
+            <div class="toolbar__filters">
+              <label class="mini-field">
+                <span class="mini-field__label">競馬場</span>
+                <select class="mini-field__control" id="filterCourse"><option value="">すべて</option></select>
+              </label>
+              <label class="mini-field">
+                <span class="mini-field__label">芝ダ</span>
+                <select class="mini-field__control" id="filterSurface"><option value="">すべて</option></select>
+              </label>
+              <label class="mini-field">
+                <span class="mini-field__label">最低出走数</span>
+                <input class="mini-field__control mini-field__control--num" type="number" id="filterMinN" value="30" min="1" max="1000" step="1" inputmode="numeric">
+              </label>
+            </div>
+          </div>
+
+          <div class="table-wrap">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th scope="col">区分</th>
+                  <th scope="col">出走</th>
+                  <th scope="col">勝率</th>
+                  <th scope="col">複勝率</th>
+                  <th scope="col">単勝回収率</th>
+                </tr>
+              </thead>
+              <tbody id="analysisTbody"></tbody>
+            </table>
+          </div>
+          <p class="table-note" id="analysisNote"></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Section: 予想 ===== -->
+    <section class="section" id="predict" aria-labelledby="predict-title">
+      <div class="section__inner">
+        <header class="section__head js-fade">
+          <p class="section__num">03</p>
+          <h2 class="section__title" id="predict-title">出走表から予想する</h2>
+          <p class="section__lead">推定勝率 × 単勝オッズ ＝ 期待値。1.0を超える馬が「理論上は割安」です。</p>
+        </header>
+
+        <form class="card form js-fade" id="predictForm" novalidate>
+          <div class="grid grid--4 form__row">
+            <div class="field">
+              <label class="field__label" for="raceCourse">競馬場 <span class="field__req">必須</span></label>
+              <select class="field__control" id="raceCourse" name="raceCourse" required>
+                <option value="">選択してください</option>
+                <option>札幌</option><option>函館</option><option>福島</option><option>新潟</option><option>東京</option>
+                <option>中山</option><option>中京</option><option>京都</option><option>阪神</option><option>小倉</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="field__label" for="raceSurface">芝ダ <span class="field__req">必須</span></label>
+              <select class="field__control" id="raceSurface" name="raceSurface" required>
+                <option value="">選択してください</option>
+                <option value="芝">芝</option>
+                <option value="ダート">ダート</option>
+              </select>
+            </div>
+            <div class="field">
+              <label class="field__label" for="raceDistance">距離（m） <span class="field__req">必須</span></label>
+              <input class="field__control" type="number" id="raceDistance" name="raceDistance" placeholder="例：1600" min="1000" max="3600" step="50" inputmode="numeric" required>
+            </div>
+            <div class="field">
+              <label class="field__label" for="raceGoing">馬場状態</label>
+              <select class="field__control" id="raceGoing" name="raceGoing">
+                <option value="">未定</option>
+                <option>良</option><option>稍重</option><option>重</option><option>不良</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="field">
+            <div class="field__head">
+              <label class="field__label" for="entries">出走表（CSV形式） <span class="field__req">必須</span></label>
+              <button class="text-btn" type="button" id="loadLatestBtn">データ内の最新レースを入れる</button>
+            </div>
+            <textarea class="field__control field__control--area" id="entries" name="entries" rows="8" minlength="20" required
+              placeholder="馬番,枠番,馬名,騎手,調教師,人気,単勝オッズ&#10;1,1,ホースA,騎手01,調教師03,2,4.5&#10;2,2,ホースB,騎手05,調教師11,1,2.8"></textarea>
+            <p class="field__hint">1行目はヘッダー。必須は「馬名」。人気が空欄でも単勝オッズがあれば自動で補完します。</p>
+          </div>
+
+          <!-- ファクターの重み -->
+          <details class="weights">
+            <summary class="weights__summary">ファクターの重みを調整する</summary>
+            <div class="weights__body">
+              <div class="weights__grid" id="weightsGrid"></div>
+              <button class="text-btn" type="button" id="resetWeightsBtn">初期値に戻す</button>
+            </div>
+          </details>
+
+          <div class="form__actions">
+            <button class="btn btn--primary btn--wide" type="submit">予想を出す</button>
+          </div>
+          <p class="form__message" id="predictStatus" role="status" aria-live="polite"></p>
+        </form>
+
+        <!-- 予想結果 -->
+        <div class="result" id="predictResult" hidden>
+          <p class="result__meta" id="predictMeta"></p>
+          <ol class="rank-list" id="predictList"></ol>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Section: バックテスト ===== -->
+    <section class="section section--tint" id="backtest" aria-labelledby="backtest-title">
+      <div class="section__inner">
+        <header class="section__head js-fade">
+          <p class="section__num">04</p>
+          <h2 class="section__title" id="backtest-title">その予想、過去に通用したか</h2>
+          <p class="section__lead">古い80%のレースで学習し、残り20%の新しいレースで答え合わせします。</p>
+        </header>
+
+        <form class="card form form--inline js-fade" id="backtestForm" novalidate>
+          <div class="field">
+            <label class="field__label" for="evThreshold">期待値の基準 <span class="field__req">必須</span></label>
+            <input class="field__control" type="number" id="evThreshold" name="evThreshold" value="1.1" min="1" max="3" step="0.05" inputmode="decimal" required>
+          </div>
+          <button class="btn btn--primary" type="submit">検証する</button>
+          <p class="form__message" id="backtestStatus" role="status" aria-live="polite"></p>
+        </form>
+
+        <div class="backtest" id="backtestResult" hidden>
+          <p class="backtest__period" id="backtestPeriod"></p>
+          <div class="grid grid--3" id="backtestCards"></div>
+          <p class="notice">
+            回収率100%未満は「その買い方を続けると過去は損をした」ことを意味します。検証レース数が少ないと結果は大きくぶれます。
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Section: 注意事項 ===== -->
+    <section class="section" id="notes" aria-labelledby="notes-title">
+      <div class="section__inner">
+        <header class="section__head js-fade">
+          <p class="section__num">05</p>
+          <h2 class="section__title" id="notes-title">仕組みと限界</h2>
+        </header>
+
+        <div class="grid grid--2">
+          <article class="card js-fade">
+            <h3 class="card__title">予想の計算方法</h3>
+            <p class="card__text">
+              人気・騎手・調教師・馬の成績・同条件の成績・枠順ごとに過去の勝率を集計し、出走数が少ないものは全体平均へ寄せて（ベイズ縮小）極端な値を抑えます。
+              平均との差を重み付きで合計し、レース内で合計100%になるよう推定勝率に変換しています。
+            </p>
+          </article>
+          <article class="card js-fade">
+            <h3 class="card__title">知っておくべき前提</h3>
+            <ul class="bullet-list">
+              <li>JRAの単勝・複勝の払戻率は80%。全馬に均等に賭けると長期的には約20%減るのが基準です。</li>
+              <li>過去の傾向が今後も続く保証はありません。</li>
+              <li>検証では確定オッズを使用しています。購入時点のオッズとはずれます。</li>
+              <li>調教・血統・展開・馬体重などは考慮していません。</li>
+            </ul>
+          </article>
+          <article class="card js-fade">
+            <h3 class="card__title">正確なデータの入手先</h3>
+            <ul class="bullet-list">
+              <li>JRA-VAN（JRA公式のデータ提供サービス・有料）。対応ソフトからCSV出力できます。</li>
+              <li>JRA公式サイトのレース結果（閲覧用）。</li>
+              <li>他サイトから自動取得する場合は、必ず各サイトの利用規約を確認してください。</li>
+            </ul>
+          </article>
+          <article class="card js-fade">
+            <h3 class="card__title">楽しむためのルール</h3>
+            <p class="card__text">
+              馬券の購入は20歳以上に限られます。予算を決め、取り返そうと賭け金を増やさないことが大切です。
+              のめり込みが心配な場合は、お住まいの地域の精神保健福祉センターなどに相談できます。
+            </p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== Footer ===== -->
+  <footer class="footer">
+    <div class="footer__inner">
+      <p class="footer__logo">Turf Lens</p>
+      <p class="footer__note">本ツールの出力は統計的な推定であり、的中や利益を保証するものではありません。</p>
+    </div>
+  </footer>
+
+  <!-- ===== SP固定CTA ===== -->
+  <nav class="sp-cta" id="spCta" aria-label="クイックメニュー">
+    <a class="sp-cta__link" href="#data">データ</a>
+    <a class="sp-cta__link" href="#analysis">分析</a>
+    <a class="sp-cta__link sp-cta__link--primary" href="#predict">予想する</a>
+  </nav>
+
+</body>
+</html>
