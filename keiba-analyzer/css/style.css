@@ -662,6 +662,32 @@ article.card:hover {
   min-width: 3.5em;
 }
 
+/* --- Template（CSV雛形表示） --- */
+.template__summary {
+  width: fit-content;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+.template__code {
+  margin: var(--space-sm) 0;
+  padding: var(--space-sm) var(--space-md);
+  overflow-x: auto;
+  font-size: var(--fs-xs);
+  line-height: 1.7;
+  background: var(--color-surface);
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+}
+
+.template__msg {
+  margin-left: var(--space-sm);
+  font-size: var(--fs-xs);
+  color: var(--color-plus);
+}
+
 /* --- Tag / Notice / List --- */
 .tag {
   display: inline-block;

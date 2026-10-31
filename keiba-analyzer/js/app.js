@@ -122,6 +122,21 @@
     loadData(A.generateDemoCsv(), 'デモ用の架空データ', true);
   });
 
+  /** テンプレートCSVをクリップボードへコピー（失敗時は選択状態にして手動コピーを促す） */
+  $('#copyTemplateBtn').addEventListener('click', async () => {
+    const msg = $('#copyTemplateMsg');
+    try {
+      await navigator.clipboard.writeText($('#templateCsv').textContent);
+      msg.textContent = 'コピーしました';
+    } catch {
+      const range = document.createRange();
+      range.selectNodeContents($('#templateCsv'));
+      window.getSelection().removeAllRanges();
+      window.getSelection().addRange(range);
+      msg.textContent = '選択しました。手動でコピーしてください';
+    }
+  });
+
   const renderSummary = (result, isDemo) => {
     const s = A.summarize(result.rows);
     $('#sumRaces').textContent = fmt.int(s.races);

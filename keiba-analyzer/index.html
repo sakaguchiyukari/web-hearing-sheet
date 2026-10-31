@@ -106,7 +106,16 @@
             <p class="card__text">
               単勝オッズが無いと回収率と期待値は計算できません。着順が「取消・除外・中止」など数字でない行は集計から除きます。
             </p>
-            <a class="text-link" href="data/template-results.csv" download>テンプレートCSVをダウンロード</a>
+            <details class="template">
+              <summary class="template__summary">テンプレートCSVを表示</summary>
+              <pre class="template__code" id="templateCsv">レースID,日付,競馬場,レース番号,レース名,芝ダ,距離,馬場,枠番,馬番,馬名,騎手,調教師,人気,単勝オッズ,着順
+2025010501,2025-01-05,中山,1,（記入例）3歳未勝利,ダート,1200,良,1,1,ホースA,騎手A,調教師A,3,6.2,2
+2025010501,2025-01-05,中山,1,（記入例）3歳未勝利,ダート,1200,良,2,2,ホースB,騎手B,調教師B,1,2.4,1
+2025010501,2025-01-05,中山,1,（記入例）3歳未勝利,ダート,1200,良,3,3,ホースC,騎手C,調教師C,2,3.9,5
+2025010501,2025-01-05,中山,1,（記入例）3歳未勝利,ダート,1200,良,4,4,ホースD,騎手D,調教師D,4,12.8,取消</pre>
+              <button class="text-btn" type="button" id="copyTemplateBtn">コピーする</button>
+              <span class="template__msg" id="copyTemplateMsg" role="status" aria-live="polite"></span>
+            </details>
           </div>
         </div>
 
