@@ -869,11 +869,6 @@ article.card:hover {
   pointer-events: none;
 }
 
-.hero__inner {
-  position: relative;
-  z-index: 1;
-}
-
 .hero__eyebrow {
   font-family: var(--font-num);
   font-size: var(--fs-xs);
@@ -903,36 +898,106 @@ article.card:hover {
   margin-top: var(--space-lg);
 }
 
-.hero__steps {
+.hero__inner {
+  position: relative;
+  z-index: 1;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: var(--space-sm);
-  max-width: 880px;
-  margin-top: var(--space-xl);
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  gap: var(--space-xl);
+  align-items: center;
 }
 
-.hero__step {
-  padding: var(--space-md);
+.hero__visual {
+  justify-self: center;
+  width: min(100%, 400px);
+}
+
+.hero__horse {
+  width: 100%;
+  filter: drop-shadow(0 30px 40px rgb(0 0 0 / 0.35));
+  animation: horse-float 6s ease-in-out infinite;
+}
+
+@keyframes horse-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+/* --- Data Pill（データ読込状態） --- */
+.data-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-xs);
+  margin-top: var(--space-md);
+  padding: 6px 16px 6px 12px;
   font-size: var(--fs-sm);
-  line-height: 1.6;
-  background: rgb(255 255 255 / 0.04);
-  border: 1px solid rgb(255 255 255 / 0.1);
-  border-radius: var(--radius-md);
-  transition: background-color 0.3s, border-color 0.3s, transform 0.4s var(--ease);
+  color: var(--color-hero-ink);
+  background: rgb(255 255 255 / 0.06);
+  border: 1px solid rgb(255 255 255 / 0.12);
+  border-radius: var(--radius-pill);
 }
 
-.hero__step:hover {
-  background: rgb(255 255 255 / 0.08);
-  border-color: rgb(211 154 58 / 0.5);
-  transform: translateY(-3px);
+.data-pill__dot {
+  width: 8px;
+  height: 8px;
+  background: var(--color-accent);
+  border-radius: 50%;
 }
 
-.hero__step-num {
-  display: block;
-  margin-bottom: var(--space-2xs);
-  font-family: var(--font-num);
+.data-pill[data-state="loading"] .data-pill__dot { animation: pulse 1.2s ease-in-out infinite; }
+.data-pill[data-state="ready"] .data-pill__dot { background: #5fd39a; box-shadow: 0 0 0 4px rgb(95 211 154 / 0.2); }
+.data-pill[data-state="empty"] .data-pill__dot { background: #e0796c; }
+
+@keyframes pulse {
+  50% { opacity: 0.3; }
+}
+
+/* --- Source Card（データ出典） --- */
+.source-card {
+  display: flex;
+  gap: var(--space-md);
+  align-items: flex-start;
+}
+
+.source-card__icon {
+  flex-shrink: 0;
+  border-radius: 16px;
+}
+
+.source-card__label {
+  font-size: var(--fs-xs);
   font-weight: 700;
-  color: var(--color-accent);
+  color: var(--color-muted);
+}
+
+.source-card__title {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.source-card__text {
+  margin-top: var(--space-2xs);
+  font-size: var(--fs-sm);
+  color: var(--color-ink-soft);
+}
+
+/* --- Manual（手動読込：折りたたみ） --- */
+.manual {
+  margin-top: var(--space-md);
+}
+
+.manual__summary {
+  width: fit-content;
+  padding: var(--space-xs) 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  color: var(--color-primary);
+  cursor: pointer;
+}
+
+.manual__body {
+  margin-top: var(--space-sm);
 }
 
 /* --- Summary --- */
@@ -1238,6 +1303,8 @@ article.card:hover {
     opacity: 1;
     transform: none;
   }
+
+  .hero__horse { animation: none; }
 }
 
 /* ---------------------------------------------------------
@@ -1253,6 +1320,10 @@ article.card:hover {
 @media (max-width: 1024px) {
   .grid--4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .grid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+  .hero__visual {
+    width: min(100%, 320px);
+  }
 
   .rank-card {
     grid-template-columns: 48px minmax(0, 1fr);
@@ -1300,8 +1371,14 @@ article.card:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .hero__steps {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  .hero__inner {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-lg);
+  }
+
+  .hero__visual {
+    order: -1;
+    width: min(56vw, 220px);
   }
 
   .hero__actions .btn {
@@ -1327,6 +1404,11 @@ article.card:hover {
   .data-table th,
   .data-table td {
     padding: 12px var(--space-md);
+  }
+
+  .source-card__icon {
+    width: 44px;
+    height: 44px;
   }
 
   .rank-card {

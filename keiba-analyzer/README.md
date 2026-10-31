@@ -6,7 +6,8 @@
 ## 使い方
 
 1. `index.html` をブラウザで開く（ローカルサーバー推奨：`python3 -m http.server` など）
-2. 「01 過去成績を読み込む」で CSV を選択（Excel保存なら文字コードは Shift_JIS）
+2. ページが同梱の公開データ `data/races.csv`（出典情報は `data/meta.json`）を自動で読み込む
+   - 同梱データが無い場合は「自分のCSVや架空データを使う」から手動で読み込む（Excel保存なら Shift_JIS）
 3. 「02 傾向を分析する」で人気・枠・騎手・調教師・距離・馬場ごとの勝率／複勝率／単勝回収率を確認
 4. 「03 出走表から予想する」で出走表を貼り付け → 推定勝率と期待値（推定勝率×単勝オッズ）を表示
 5. 「04 精度検証」で、古い80%で学習・新しい20%で答え合わせした結果を確認し、重みを調整
@@ -55,8 +56,12 @@ keiba-analyzer/
 ├── css/style.css          # スタイル（CSS変数・BEM）
 ├── js/analyzer.js         # 計算ロジック（DOM非依存）
 ├── js/app.js              # UI制御・フェードイン
-├── data/template-results.csv
+├── data/
+│   ├── template-results.csv
+│   ├── races.csv          # 自動読込する公開データ（未同梱）
+│   └── meta.json          # 出典・取得日 {"source","note","fetchedAt"}（未同梱）
 └── images/
-    ├── favicon-turf-lens.svg
+    ├── hero-horse.svg     # ヒーローの馬イラスト
+    ├── icon-horse-head.svg # ロゴ・ファビコン
     └── ogp-turf-lens.png  # 仮命名（未作成・OGP用 1200×630 を想定）
 ```

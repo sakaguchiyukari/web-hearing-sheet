@@ -82,13 +82,31 @@
     return new TextDecoder(encoding).decode(buffer);
   };
 
-  const loadData = (text, label, isDemo) => {
+  /** ヒーローのデータ状態表示（state: loading | ready | empty） */
+  const setPill = (pillState, text) => {
+    $('#dataPill').dataset.state = pillState;
+    $('#dataPillText').textContent = text;
+  };
+
+  /** 出典カードの表示 */
+  const setSource = (title, text) => {
+    $('#sourceTitle').textContent = title;
+    $('#sourceText').textContent = text;
+  };
+
+  /**
+   * CSVテキストを読み込んで全画面を更新
+   * @param {string} text CSV本文
+   * @param {{label: string, isDemo?: boolean}} opt
+   * @returns {boolean} 成功したか
+   */
+  const loadData = (text, { label, isDemo = false }) => {
     try {
       const result = A.loadResults(text);
       state.rows = result.rows;
       state.model = A.buildModel(result.rows);
 
-      renderSummary(result, isDemo);
+      const summary = renderSummary(result, isDemo);
       populateFilters();
       renderAnalysis();
 
@@ -96,9 +114,30 @@
       if (result.skipped) warnings.push(`着順が数値でない${fmt.int(result.skipped)}行を除外`);
       if (!result.hasOdds) warnings.push('単勝オッズ列が無いため回収率・期待値は計算できません');
       if (result.usedRaceNameOnly) warnings.push('レース番号が無いため、同日同場の同名レースは1レースとして扱われます');
-      setStatus(dataStatus, `「${label}」を読み込みました。${warnings.join(' / ')}`, 'success');
+      setStatus(dataStatus, warnings.join(' / '), warnings.length ? 'error' : '');
+
+      setPill(isDemo ? 'empty' : 'ready', `${label}：${fmt.int(summary.races)}レース（${summary.from}〜${summary.to}）`);
+      return true;
     } catch (err) {
       setStatus(dataStatus, err.message, 'error');
+      return false;
+    }
+  };
+
+  /** 同梱の公開データ（data/races.csv）を自動で読み込む */
+  const autoLoad = async () => {
+    try {
+      const [csvRes, metaRes] = await Promise.all([fetch('data/races.csv'), fetch('data/meta.json')]);
+      if (!csvRes.ok) throw new Error('not found');
+      const meta = metaRes.ok ? await metaRes.json() : {};
+      const ok = loadData(await csvRes.text(), { label: '公開データ' });
+      if (ok) {
+        setSource(meta.source || '公開データ', `${meta.note || ''}${meta.fetchedAt ? `（取得日：${meta.fetchedAt}）` : ''}`);
+      }
+    } catch {
+      setPill('empty', '公開データは準備中です');
+      setSource('公開データは準備中です', '自動取得したデータがまだ同梱されていません。下の「自分のCSVや架空データを使う」から試せます。');
+      $('.manual').open = true;
     }
   };
 
@@ -112,14 +151,16 @@
     }
     try {
       const text = await readFile(file, $('#csvEncoding').value);
-      loadData(text, file.name, false);
+      if (loadData(text, { label: file.name })) setSource(file.name, '手元のCSVファイルを読み込みました。');
     } catch (err) {
       setStatus(dataStatus, `読み込みに失敗しました：${err.message}`, 'error');
     }
   });
 
   $('#sampleBtn').addEventListener('click', () => {
-    loadData(A.generateDemoCsv(), 'デモ用の架空データ', true);
+    if (loadData(A.generateDemoCsv(), { label: '架空データ', isDemo: true })) {
+      setSource('架空データ（動作確認用）', '実在のレース結果ではありません。馬券の判断には使えません。');
+    }
   });
 
   /** テンプレートCSVをクリップボードへコピー（失敗時は選択状態にして手動コピーを促す） */
@@ -147,6 +188,7 @@
     $('#demoBadge').hidden = !isDemo;
     $('#summaryWrap').hidden = false;
     observeFade($('#summaryWrap'));
+    return s;
   };
 
   /* =========================================================
@@ -401,4 +443,5 @@
      ========================================================= */
   renderWeights();
   observeFade();
+  autoLoad();
 })();

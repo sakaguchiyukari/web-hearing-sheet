@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" role="img" aria-label="馬のイラスト">
+  <!-- 背景：コースをイメージした同心円 -->
+  <circle cx="200" cy="200" r="190" fill="#163a2b"/>
+  <circle cx="200" cy="200" r="160" fill="none" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2"/>
+  <circle cx="200" cy="200" r="130" fill="none" stroke="#ffffff" stroke-opacity="0.06" stroke-width="2" stroke-dasharray="6 10"/>
+  <circle cx="318" cy="96" r="18" fill="#d39a3a" fill-opacity="0.9"/>
+  <!-- 馬（頭部・首） -->
+  <clipPath id="clip"><circle cx="200" cy="200" r="190"/></clipPath>
+  <g clip-path="url(#clip)">
+  <g transform="translate(40 30) scale(1.7)">
+    <path fill="#d39a3a" d="M98 40 C84 46 72 58 64 72 L54 74 L60 84 C52 98 46 112 42 126 L32 130 L40 138 C36 154 34 172 34 220 L52 220 C52 160 58 126 72 98 C80 80 90 64 100 52 Z"/>
+    <path fill="#eef3ef" d="M50 220 C50 160 56 126 70 100 C80 80 90 62 98 50 L102 22 C103 17 108 17 110 21 L116 40 C124 42 132 48 140 58 C154 76 168 98 180 118 C186 128 186 140 178 146 C170 152 158 152 148 146 C140 141 132 138 124 140 C118 150 118 168 124 220 Z"/>
+    <circle cx="130" cy="78" r="5" fill="#163a2b"/>
+    <path d="M172 134 q-4 3 -9 2" stroke="#163a2b" stroke-width="3" fill="none" stroke-linecap="round"/>
+  </g>
+  </g>
+</svg>

@@ -4,11 +4,11 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Turf Lens｜過去データで読む競馬分析・予想ツール</title>
-  <meta name="description" content="過去のレース結果CSVを読み込み、人気・枠・騎手・調教師・距離・馬場ごとの勝率と回収率を集計。出走表から推定勝率と期待値を算出し、バックテストで精度を検証できる競馬分析ツールです。">
+  <meta name="description" content="公開されている過去のレース結果を自動で読み込み、人気・枠・騎手・調教師・距離・馬場ごとの勝率と回収率を集計。出走表から推定勝率と期待値を算出し、バックテストで精度を検証できる競馬分析ツールです。">
   <meta property="og:title" content="Turf Lens｜過去データで読む競馬分析・予想ツール">
   <meta property="og:type" content="website">
   <meta property="og:image" content="images/ogp-turf-lens.png">
-  <link rel="icon" href="images/favicon-turf-lens.svg" type="image/svg+xml">
+  <link rel="icon" href="images/icon-horse-head.svg" type="image/svg+xml">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap">
@@ -22,7 +22,7 @@
   <header class="header">
     <div class="header__inner">
       <a class="header__logo" href="#top">
-        <img class="header__logo-icon" src="images/favicon-turf-lens.svg" alt="" width="28" height="28">
+        <img class="header__logo-icon" src="images/icon-horse-head.svg" alt="" width="32" height="32">
         <span class="header__logo-text">Turf Lens</span>
       </a>
       <nav class="header__nav" aria-label="メインメニュー">
@@ -42,82 +42,90 @@
     <!-- ===== Hero ===== -->
     <section class="hero">
       <div class="hero__inner">
-        <p class="hero__eyebrow js-fade">DATA-DRIVEN HANDICAPPING</p>
-        <h1 class="hero__title js-fade">
-          勘より、<br class="u-sp-only">過去の数字で選ぶ。
-        </h1>
-        <p class="hero__lead js-fade">
-          過去のレース結果を読み込むと、人気・枠・騎手・距離ごとの勝率と回収率を集計します。<br class="u-pc-only">
-          出走表から推定勝率と期待値を出し、その予想が過去に通用したかも検証できます。
-        </p>
-        <div class="hero__actions js-fade">
-          <a class="btn btn--accent" href="#data">データを読み込む</a>
-          <a class="btn btn--ghost" href="#notes">仕組みと限界を見る</a>
+        <div class="hero__body">
+          <p class="hero__eyebrow js-fade">DATA-DRIVEN HANDICAPPING</p>
+          <h1 class="hero__title js-fade">
+            勘より、<br>過去の数字で選ぶ。
+          </h1>
+          <p class="hero__lead js-fade">
+            過去のレース結果をページが自動で読み込みます。<br class="u-pc-only">
+            出走表を貼るだけで、各馬の推定勝率と期待値がわかります。
+          </p>
+          <p class="data-pill js-fade" id="dataPill" data-state="loading">
+            <span class="data-pill__dot" aria-hidden="true"></span>
+            <span class="data-pill__text" id="dataPillText">過去データを読み込み中…</span>
+          </p>
+          <div class="hero__actions js-fade">
+            <a class="btn btn--accent" href="#predict">予想する</a>
+            <a class="btn btn--ghost" href="#analysis">傾向を見る</a>
+          </div>
         </div>
-        <ol class="hero__steps js-fade" aria-label="使い方">
-          <li class="hero__step"><span class="hero__step-num">01</span>過去成績CSVを読込</li>
-          <li class="hero__step"><span class="hero__step-num">02</span>傾向を分析</li>
-          <li class="hero__step"><span class="hero__step-num">03</span>出走表から予想</li>
-          <li class="hero__step"><span class="hero__step-num">04</span>過去データで検証</li>
-        </ol>
+        <figure class="hero__visual js-fade">
+          <img class="hero__horse" src="images/hero-horse.svg" alt="" width="400" height="400">
+        </figure>
       </div>
     </section>
 
-    <!-- ===== Section: データ読込 ===== -->
+    <!-- ===== Section: データ ===== -->
     <section class="section" id="data" aria-labelledby="data-title">
       <div class="section__inner">
         <header class="section__head js-fade">
           <p class="section__num">01</p>
-          <h2 class="section__title" id="data-title">過去成績を読み込む</h2>
-          <p class="section__lead">1行＝1頭の出走結果。データは端末内で処理され、外部へ送信されません。</p>
+          <h2 class="section__title" id="data-title">使っている過去データ</h2>
+          <p class="section__lead">ページを開くと自動で読み込みます。データは端末内で処理され、外部へ送信されません。</p>
         </header>
 
-        <div class="grid grid--2">
-          <!-- CSVアップロード -->
-          <form class="card form js-fade" id="dataForm" novalidate>
-            <h3 class="card__title">CSVファイル</h3>
-            <div class="field">
-              <label class="field__label" for="csvFile">過去成績CSV <span class="field__req">必須</span></label>
-              <input class="field__file" type="file" id="csvFile" name="csvFile" accept=".csv,.tsv,.txt,text/csv" required>
-              <p class="field__hint">ヘッダー行が必要です（列の詳細は右の仕様を参照）。</p>
-            </div>
-            <div class="field">
-              <label class="field__label" for="csvEncoding">文字コード</label>
-              <select class="field__control" id="csvEncoding" name="csvEncoding" required>
-                <option value="utf-8">UTF-8</option>
-                <option value="shift_jis">Shift_JIS（Excel保存のCSVなど）</option>
-              </select>
-            </div>
-            <div class="form__actions">
-              <button class="btn btn--primary" type="submit">読み込む</button>
-              <button class="btn btn--outline" type="button" id="sampleBtn">デモ用の架空データで試す</button>
-            </div>
+        <!-- 自動読込ステータス -->
+        <div class="card source-card js-fade">
+          <img class="source-card__icon" src="images/icon-horse-head.svg" alt="" width="56" height="56">
+          <div class="source-card__body">
+            <p class="source-card__label">データの出典</p>
+            <p class="source-card__title" id="sourceTitle">読み込み中…</p>
+            <p class="source-card__text" id="sourceText"></p>
             <p class="form__message" id="dataStatus" role="status" aria-live="polite"></p>
-          </form>
+          </div>
+        </div>
 
-          <!-- CSV仕様 -->
-          <div class="card card--muted js-fade">
-            <h3 class="card__title">CSVの列仕様</h3>
-            <ul class="spec-list">
-              <li class="spec-list__item"><span class="tag tag--req">必須</span>日付 / 競馬場 / 距離 / 馬名 / 着順</li>
-              <li class="spec-list__item"><span class="tag tag--req">必須</span>レース番号（またはレースID・レース名）</li>
-              <li class="spec-list__item"><span class="tag">推奨</span>芝ダ / 馬場 / 枠番 / 馬番 / 騎手 / 調教師 / 人気 / 単勝オッズ</li>
-            </ul>
-            <p class="card__text">
-              単勝オッズが無いと回収率と期待値は計算できません。着順が「取消・除外・中止」など数字でない行は集計から除きます。
-            </p>
-            <details class="template">
-              <summary class="template__summary">テンプレートCSVを表示</summary>
-              <pre class="template__code" id="templateCsv">レースID,日付,競馬場,レース番号,レース名,芝ダ,距離,馬場,枠番,馬番,馬名,騎手,調教師,人気,単勝オッズ,着順
+        <!-- 手動読込（補助） -->
+        <details class="manual js-fade">
+          <summary class="manual__summary">自分のCSVや架空データを使う</summary>
+          <div class="grid grid--2 manual__body">
+            <form class="card form" id="dataForm" novalidate>
+              <div class="field">
+                <label class="field__label" for="csvFile">過去成績CSV <span class="field__req">必須</span></label>
+                <input class="field__file" type="file" id="csvFile" name="csvFile" accept=".csv,.tsv,.txt,text/csv" required>
+              </div>
+              <div class="field">
+                <label class="field__label" for="csvEncoding">文字コード</label>
+                <select class="field__control" id="csvEncoding" name="csvEncoding" required>
+                  <option value="utf-8">UTF-8</option>
+                  <option value="shift_jis">Shift_JIS（Excel保存のCSVなど）</option>
+                </select>
+              </div>
+              <div class="form__actions">
+                <button class="btn btn--primary" type="submit">読み込む</button>
+                <button class="btn btn--outline" type="button" id="sampleBtn">架空データで試す</button>
+              </div>
+            </form>
+            <div class="card card--muted">
+              <h3 class="card__title">CSVの列</h3>
+              <ul class="spec-list">
+                <li class="spec-list__item"><span class="tag tag--req">必須</span>日付 / 競馬場 / 距離 / 馬名 / 着順 / レース番号</li>
+                <li class="spec-list__item"><span class="tag">推奨</span>芝ダ / 馬場 / 枠番 / 馬番 / 騎手 / 調教師 / 人気 / 単勝オッズ</li>
+              </ul>
+              <details class="template">
+                <summary class="template__summary">テンプレートを表示</summary>
+                <pre class="template__code" id="templateCsv">レースID,日付,競馬場,レース番号,レース名,芝ダ,距離,馬場,枠番,馬番,馬名,騎手,調教師,人気,単勝オッズ,着順
 2025010501,2025-01-05,中山,1,（記入例）3歳未勝利,ダート,1200,良,1,1,ホースA,騎手A,調教師A,3,6.2,2
 2025010501,2025-01-05,中山,1,（記入例）3歳未勝利,ダート,1200,良,2,2,ホースB,騎手B,調教師B,1,2.4,1
 2025010501,2025-01-05,中山,1,（記入例）3歳未勝利,ダート,1200,良,3,3,ホースC,騎手C,調教師C,2,3.9,5
 2025010501,2025-01-05,中山,1,（記入例）3歳未勝利,ダート,1200,良,4,4,ホースD,騎手D,調教師D,4,12.8,取消</pre>
-              <button class="text-btn" type="button" id="copyTemplateBtn">コピーする</button>
-              <span class="template__msg" id="copyTemplateMsg" role="status" aria-live="polite"></span>
-            </details>
+                <button class="text-btn" type="button" id="copyTemplateBtn">コピーする</button>
+                <span class="template__msg" id="copyTemplateMsg" role="status" aria-live="polite"></span>
+              </details>
+            </div>
           </div>
-        </div>
+        </details>
 
         <!-- データ概要 -->
         <div class="summary" id="summaryWrap" hidden>
