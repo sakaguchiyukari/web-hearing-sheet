@@ -1,0 +1,13 @@
+{
+  "name": "web-site-manager",
+  "version": "1.0.0",
+  "description": "自社Webサイトの管理状況を記録・確認し、月次報告書を作成するローカル業務システム",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18.17"
+  },
+  "scripts": {
+    "start": "node server.js"
+  }
+}

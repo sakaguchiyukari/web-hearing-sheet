@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>ログイン｜Webサイト管理システム</title>
+  <link rel="icon" href="assets/img/favicon-site-manager.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/login.js" defer></script>
+</head>
+<body class="auth-body">
+
+  <!-- ===== ログイン / 初期設定 ===== -->
+  <main class="auth">
+    <div class="auth__card js-fade is-visible">
+      <div class="auth__brand">
+        <img class="auth__logo" src="assets/img/logo-site-manager.svg" alt="" width="40" height="40">
+        <h1 class="auth__title">Webサイト管理システム</h1>
+      </div>
+
+      <div class="alert alert--error" id="auth-error" role="alert" hidden></div>
+
+      <!-- ログインフォーム -->
+      <form class="auth__form" id="login-form" hidden novalidate>
+        <p class="auth__lead">ユーザー名とパスワードを入力してください。</p>
+        <div class="field">
+          <label class="field__label" for="login-username">ユーザー名</label>
+          <input class="input" type="text" id="login-username" name="username" required autocomplete="username" maxlength="32">
+        </div>
+        <div class="field">
+          <label class="field__label" for="login-password">パスワード</label>
+          <input class="input" type="password" id="login-password" name="password" required autocomplete="current-password" maxlength="128">
+        </div>
+        <button type="submit" class="btn btn--primary btn--block">ログイン</button>
+      </form>
+
+      <!-- 初回セットアップフォーム -->
+      <form class="auth__form" id="setup-form" hidden novalidate>
+        <p class="auth__lead">初回起動です。管理者アカウントを作成してください。</p>
+        <div class="field">
+          <label class="field__label" for="setup-username">ユーザー名<span class="field__required">必須</span></label>
+          <input class="input" type="text" id="setup-username" name="username" required minlength="3" maxlength="32"
+            pattern="[A-Za-z0-9._\-]{3,32}" autocomplete="username" placeholder="例）admin">
+          <p class="field__help">半角英数字と . _ - で3〜32文字</p>
+        </div>
+        <div class="field">
+          <label class="field__label" for="setup-display">表示名<span class="field__required">必須</span></label>
+          <input class="input" type="text" id="setup-display" name="displayName" required maxlength="50" placeholder="例）山田 太郎">
+          <p class="field__help">点検記録の担当者名などに使われます</p>
+        </div>
+        <div class="field">
+          <label class="field__label" for="setup-password">パスワード<span class="field__required">必須</span></label>
+          <input class="input" type="password" id="setup-password" name="password" required minlength="8" maxlength="128" autocomplete="new-password">
+          <p class="field__help">8文字以上</p>
+        </div>
+        <div class="field">
+          <label class="field__label" for="setup-password2">パスワード（確認）<span class="field__required">必須</span></label>
+          <input class="input" type="password" id="setup-password2" name="password2" required minlength="8" maxlength="128" autocomplete="new-password">
+        </div>
+        <button type="submit" class="btn btn--primary btn--block">アカウントを作成して開始</button>
+      </form>
+
+      <p class="auth__note">このシステムはローカル環境で動作し、データは外部に送信されません。</p>
+    </div>
+  </main>
+
+</body>
+</html>

@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Webサイト管理システム</title>
+  <link rel="icon" href="assets/img/favicon-site-manager.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script type="module" src="assets/js/app.js" defer></script>
+</head>
+<body class="app-body">
+
+  <!-- ===== スキップリンク ===== -->
+  <a class="skip-link" href="#main">本文へ移動</a>
+
+  <div class="layout">
+
+    <!-- ===== サイドメニュー ===== -->
+    <aside class="sidebar" id="sidebar" aria-label="メインメニュー">
+      <div class="sidebar__brand">
+        <img class="sidebar__logo" src="assets/img/logo-site-manager.svg" alt="" width="32" height="32">
+        <div class="sidebar__brand-text">
+          <span class="sidebar__title">サイト管理</span>
+          <span class="sidebar__org" id="org-name"></span>
+        </div>
+      </div>
+      <nav class="sidebar__nav">
+        <ul class="nav" id="nav"></ul>
+      </nav>
+      <div class="sidebar__footer">
+        <p class="sidebar__user" id="current-user"></p>
+        <button type="button" class="btn btn--sidebar" id="logout-button">ログアウト</button>
+      </div>
+    </aside>
+    <div class="sidebar-overlay" id="sidebar-overlay" hidden></div>
+
+    <!-- ===== メインエリア ===== -->
+    <div class="layout__main">
+      <header class="topbar">
+        <button type="button" class="topbar__menu" id="menu-button" aria-controls="sidebar" aria-expanded="false">
+          <span class="topbar__menu-bar" aria-hidden="true"></span>
+          <span class="visually-hidden">メニューを開く</span>
+        </button>
+        <p class="topbar__date" id="today-label"></p>
+        <div class="topbar__actions">
+          <button type="button" class="btn btn--primary btn--sm" data-quick="inspection">＋ 点検を記録</button>
+          <button type="button" class="btn btn--outline btn--sm" data-quick="worklog">＋ 作業・トラブル</button>
+        </div>
+      </header>
+
+      <main class="main" id="main" tabindex="-1">
+        <p class="loading">読み込み中…</p>
+      </main>
+    </div>
+  </div>
+
+</body>
+</html>
