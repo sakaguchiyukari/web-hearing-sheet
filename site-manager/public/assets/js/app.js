@@ -14,6 +14,8 @@ import { renderWorklogs } from './views/worklogs.js';
 import { renderSecurity } from './views/security.js';
 import { renderBackups } from './views/backups.js';
 import { renderContracts } from './views/contracts.js';
+import { renderReports } from './views/reports.js';
+import { renderSettings } from './views/settings.js';
 
 /* =========================================================
    メニュー定義（ここに追加すれば左メニューに表示される）
@@ -25,7 +27,9 @@ const ICONS = {
   worklogs: 'M13 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zm1 9.4V7h-2v6.4l4.6 2.7 1-1.7-3.6-2z',
   security: 'M12 2 4 5v6c0 5 3.4 9.7 8 11 4.6-1.3 8-6 8-11V5l-8-3z',
   backups: 'M4 4h16v5H4V4zm0 7h16v5H4v-5zm2-5v1h2V6H6zm0 7v1h2v-1H6zM4 18h16v2H4v-2z',
-  contracts: 'M6 2h9l5 5v15H6V2zm8 1.5V8h4.5L14 3.5zM9 12v2h8v-2H9zm0 4v2h8v-2H9z'
+  contracts: 'M6 2h9l5 5v15H6V2zm8 1.5V8h4.5L14 3.5zM9 12v2h8v-2H9zm0 4v2h8v-2H9z',
+  reports: 'M5 3h14v18H5V3zm3 4v2h8V7H8zm0 4v2h8v-2H8zm0 4v2h5v-2H8z',
+  settings: 'M19.4 13a7.5 7.5 0 0 0 0-2l2.1-1.6-2-3.4-2.5 1a7.6 7.6 0 0 0-1.7-1L15 3h-4l-.4 2.6a7.6 7.6 0 0 0-1.7 1l-2.5-1-2 3.4L6.6 11a7.5 7.5 0 0 0 0 2l-2.1 1.6 2 3.4 2.5-1c.5.4 1.1.7 1.7 1L11 21h4l.4-2.6c.6-.3 1.2-.6 1.7-1l2.5 1 2-3.4-2.2-1.6zM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7z'
 };
 
 const NAV = [
@@ -35,7 +39,9 @@ const NAV = [
   { key: 'worklogs', label: '作業履歴・トラブル', href: '#/worklogs' },
   { key: 'security', label: 'セキュリティ管理', href: '#/security' },
   { key: 'backups', label: 'バックアップ管理', href: '#/backups' },
-  { key: 'contracts', label: '契約・支払い', href: '#/contracts' }
+  { key: 'contracts', label: '契約・支払い', href: '#/contracts' },
+  { key: 'reports', label: '月次報告書', href: '#/reports' },
+  { key: 'settings', label: '設定・データ管理', href: '#/settings' }
 ];
 
 /* =========================================================
@@ -49,7 +55,9 @@ const ROUTES = [
   { re: /^\/worklogs$/, nav: 'worklogs', view: renderWorklogs },
   { re: /^\/security$/, nav: 'security', view: renderSecurity },
   { re: /^\/backups$/, nav: 'backups', view: renderBackups },
-  { re: /^\/contracts$/, nav: 'contracts', view: renderContracts }
+  { re: /^\/contracts$/, nav: 'contracts', view: renderContracts },
+  { re: /^\/reports$/, nav: 'reports', view: renderReports },
+  { re: /^\/settings$/, nav: 'settings', view: renderSettings }
 ];
 
 const main = document.getElementById('main');
@@ -178,6 +186,17 @@ async function start() {
     document.getElementById('org-name').textContent = state.db.settings.orgName || '';
     render();
   });
+  // 他の担当者の更新を反映するため、タブに戻ったときに最新データを取得（入力中のモーダルがあるときは除く）
+  document.addEventListener('visibilitychange', async () => {
+    if (document.visibilityState !== 'visible' || document.querySelector('dialog[open]')) return;
+    try {
+      await loadDb();
+      render();
+    } catch {
+      /* 取得できない場合は次回に再試行 */
+    }
+  });
+
   menuButton.addEventListener('click', () => (sidebar.classList.contains('sidebar--open') ? closeSidebar() : openSidebar()));
   overlay.addEventListener('click', closeSidebar);
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSidebar(); });

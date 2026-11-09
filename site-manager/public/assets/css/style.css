@@ -1822,6 +1822,7 @@ a {
 
 .report-sheet-wrap {
   padding: var(--space-lg) 16px;
+  overflow-x: auto;
 }
 
 .report {
@@ -2008,6 +2009,17 @@ a {
   border-top: 1px solid #c9d0d7;
   font-size: 8pt;
   color: #666;
+}
+
+.month-switch {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.month-switch .input {
+  width: auto;
 }
 
 .report-note-form .form-grid {

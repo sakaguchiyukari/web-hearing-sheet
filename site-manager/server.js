@@ -24,6 +24,7 @@ const COOKIE = 'wsm_sid';
 
 const LIMIT_JSON = 1024 * 1024; // 通常の入力: 1MB
 const LIMIT_ATTACHMENT = 15 * 1024 * 1024; // 添付ファイル1件: 15MB
+const LIMIT_RESTORE = 400 * 1024 * 1024; // 復元ファイル: 400MB
 
 /* 添付できるファイル形式（HTML・SVG・実行ファイル等は不可） */
 const ATTACHMENT_TYPES = {
@@ -114,6 +115,57 @@ const sessionCookie = (token, maxAge) => `${COOKIE}=${token}; HttpOnly; SameSite
 
 /** 業務データを返す（添付ファイルの中身は含めない） */
 const publicDb = () => store.db;
+
+/* =========================================================
+   バックアップ・復元
+   ========================================================= */
+const ID_RE = /^[a-z0-9-]{1,64}$/i;
+const ISO_RE = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/;
+
+/** 復元データを検証して、正しい形のDBを作る（不正があれば例外） */
+function buildRestoredDb(input) {
+  const src = normalizeDb(input);
+  const db = normalizeDb({});
+  db.settings = validateSettings(src.settings);
+  db.checklists = validateChecklists(src.checklists);
+  for (const [ym, note] of Object.entries(src.reportNotes)) {
+    if (/^\d{4}-\d{2}$/.test(ym)) db.reportNotes[ym] = { ...validateReportNote(note), updatedAt: String(note.updatedAt || ''), updatedBy: String(note.updatedBy || '').slice(0, 100) };
+  }
+  db.attachments = src.attachments
+    .filter((a) => a && ID_RE.test(a.id) && typeof a.name === 'string')
+    .map((a) => ({ id: a.id, name: a.name.slice(0, 150), size: Number(a.size) || 0, mime: ATTACHMENT_TYPES[a.name.split('.').pop().toLowerCase()] || 'application/octet-stream', createdAt: ISO_RE.test(a.createdAt) ? a.createdAt : nowIso(), createdBy: String(a.createdBy || '').slice(0, 100) }));
+
+  // 1回目：形式チェック（参照チェックなし）
+  for (const name of Object.keys(COLLECTIONS)) {
+    db[name] = src[name].map((r, i) => {
+      if (!r || !ID_RE.test(r.id)) throw new HttpError(400, `${COLLECTIONS[name].label}の${i + 1}件目のIDが正しくありません`);
+      try {
+        return {
+          id: r.id,
+          ...validateRecord(name, r, db, { skipRefs: true }),
+          createdAt: ISO_RE.test(r.createdAt) ? r.createdAt : nowIso(),
+          createdBy: String(r.createdBy || '').slice(0, 100),
+          updatedAt: ISO_RE.test(r.updatedAt) ? r.updatedAt : nowIso(),
+          updatedBy: String(r.updatedBy || '').slice(0, 100)
+        };
+      } catch (err) {
+        throw new HttpError(400, `${COLLECTIONS[name].label}の${i + 1}件目：${err.message}`);
+      }
+    });
+  }
+  // 2回目：関連（サイトID等）の整合性チェック
+  for (const name of Object.keys(COLLECTIONS)) {
+    db[name].forEach((r, i) => {
+      try {
+        // 存在しないサイト等への参照は取り除く（必須の参照が無い場合はエラー）
+        db[name][i] = { ...r, ...validateRecord(name, r, db) };
+      } catch (err) {
+        throw new HttpError(400, `${COLLECTIONS[name].label}の${i + 1}件目：${err.message}`);
+      }
+    });
+  }
+  return db;
+}
 
 /* =========================================================
    静的ファイル配信
@@ -303,6 +355,47 @@ async function handleApi(req, res, url) {
       // 常にダウンロード扱い（ブラウザ内で実行させない）
       'Content-Disposition': `attachment; filename="file.${meta.name.split('.').pop()}"; filename*=UTF-8''${encodeURIComponent(meta.name)}`
     });
+  }
+
+  /* ---- データのバックアップ・復元 ---- */
+  if (pathname === '/api/backup' && method === 'GET') {
+    const withFiles = url.searchParams.get('attachments') === '1';
+    const files = {};
+    if (withFiles) {
+      for (const a of store.db.attachments) {
+        const buf = await readFile(store.attachmentPath(a.id)).catch(() => null);
+        if (buf) files[a.id] = buf.toString('base64');
+      }
+    }
+    const payload = { format: 'wsm-backup', formatVersion: 1, exportedAt: nowIso(), exportedBy: user.displayName, includesAttachments: withFiles, db: store.db, attachments: files };
+    const stamp = new Date().toISOString().slice(0, 10);
+    return send(res, 200, JSON.stringify(payload), {
+      'Content-Type': MIME['.json'],
+      'Content-Disposition': `attachment; filename="site-manager-backup-${stamp}${withFiles ? '-full' : ''}.json"`
+    });
+  }
+
+  if (pathname === '/api/restore' && method === 'POST') {
+    const body = await readJson(req, LIMIT_RESTORE);
+    // バックアップ形式、または data/backups の db.json をそのまま受け付ける
+    const source = body.format === 'wsm-backup' ? body.db : body;
+    if (!source || !Array.isArray(source.sites)) throw new HttpError(400, 'このシステムのバックアップファイルではありません');
+    const restored = buildRestoredDb(source);
+    const files = body.format === 'wsm-backup' && body.attachments && typeof body.attachments === 'object' ? body.attachments : {};
+    const snapshot = await store.snapshot('before-restore');
+    for (const [id, data] of Object.entries(files)) {
+      if (ID_RE.test(id) && typeof data === 'string' && restored.attachments.some((a) => a.id === id)) {
+        await writeFile(store.attachmentPath(id), Buffer.from(data, 'base64'));
+      }
+    }
+    store.db = restored;
+    await store.save();
+    const counts = Object.fromEntries(Object.keys(COLLECTIONS).map((k) => [k, restored[k].length]));
+    return sendJson(res, 200, { ok: true, snapshot, counts, restoredAttachments: Object.keys(files).length });
+  }
+
+  if (pathname === '/api/snapshots' && method === 'GET') {
+    return sendJson(res, 200, { snapshots: await store.listSnapshots(), dataDir: DATA_DIR });
   }
 
   /* ---- ユーザー管理 ---- */
