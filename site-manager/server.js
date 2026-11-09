@@ -6,7 +6,7 @@
  *   既定: http://127.0.0.1:3800 （このPCからのみアクセス可能）
  */
 import http from 'node:http';
-import { readFile, writeFile, unlink } from 'node:fs/promises';
+import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Store, newId, nowIso, normalizeDb } from './server/store.js';
@@ -23,6 +23,24 @@ const PUBLIC_DIR = path.join(ROOT, 'public');
 const COOKIE = 'wsm_sid';
 
 const LIMIT_JSON = 1024 * 1024; // 通常の入力: 1MB
+const LIMIT_ATTACHMENT = 15 * 1024 * 1024; // 添付ファイル1件: 15MB
+
+/* 添付できるファイル形式（HTML・SVG・実行ファイル等は不可） */
+const ATTACHMENT_TYPES = {
+  pdf: 'application/pdf',
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  csv: 'text/csv',
+  txt: 'text/plain',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  xls: 'application/vnd.ms-excel',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  doc: 'application/msword',
+  zip: 'application/zip'
+};
 
 const store = new Store(DATA_DIR);
 const auth = new Auth(path.join(DATA_DIR, 'auth.json'));
@@ -252,6 +270,39 @@ async function handleApi(req, res, url) {
     store.db.reportNotes[note[1]] = { ...validateReportNote(await readJson(req)), updatedAt: nowIso(), updatedBy: user.displayName };
     await store.save();
     return sendJson(res, 200, { note: store.db.reportNotes[note[1]] });
+  }
+
+  /* ---- 添付ファイル（セキュリティ診断レポート等） ---- */
+  if (pathname === '/api/attachments' && method === 'POST') {
+    const body = await readJson(req, Math.ceil(LIMIT_ATTACHMENT * 1.4) + 4096);
+    const name = String(body.name || '').replace(/[\\/:*?"<>|\u0000-\u001F]/g, '_').trim().slice(0, 150);
+    const ext = name.includes('.') ? name.split('.').pop().toLowerCase() : '';
+    if (!name || !ATTACHMENT_TYPES[ext]) {
+      throw new HttpError(400, `添付できるファイル形式は ${Object.keys(ATTACHMENT_TYPES).join(' / ')} です`);
+    }
+    if (typeof body.data !== 'string' || !/^[A-Za-z0-9+/=]*$/.test(body.data)) throw new HttpError(400, 'ファイルデータが正しくありません');
+    const buf = Buffer.from(body.data, 'base64');
+    if (!buf.length) throw new HttpError(400, '空のファイルは添付できません');
+    if (buf.length > LIMIT_ATTACHMENT) throw new HttpError(413, '添付ファイルは15MBまでです');
+    const meta = { id: newId(), name, size: buf.length, mime: ATTACHMENT_TYPES[ext], createdAt: nowIso(), createdBy: user.displayName };
+    await writeFile(store.attachmentPath(meta.id), buf);
+    store.db.attachments.push(meta);
+    await store.save();
+    return sendJson(res, 201, { attachment: meta });
+  }
+
+  const am = pathname.match(/^\/api\/attachments\/([a-z0-9-]+)$/);
+  if (am && method === 'GET') {
+    const meta = store.db.attachments.find((a) => a.id === am[1]);
+    if (!meta) throw new HttpError(404, '添付ファイルが見つかりません');
+    const buf = await readFile(store.attachmentPath(meta.id)).catch(() => null);
+    if (!buf) throw new HttpError(404, '添付ファイルの実体が見つかりません');
+    return send(res, 200, buf, {
+      'Content-Type': meta.mime,
+      'Content-Length': buf.length,
+      // 常にダウンロード扱い（ブラウザ内で実行させない）
+      'Content-Disposition': `attachment; filename="file.${meta.name.split('.').pop()}"; filename*=UTF-8''${encodeURIComponent(meta.name)}`
+    });
   }
 
   /* ---- ユーザー管理 ---- */

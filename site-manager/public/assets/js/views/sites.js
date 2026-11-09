@@ -2,12 +2,15 @@
  * サイト管理台帳（一覧・詳細）
  */
 import { state, siteById, allSitesSorted } from '../state.js';
-import { html, raw, todayStr, formatDate, formatDateTime, matchesQuery, byDateDesc, debounce } from '../utils.js';
+import { html, raw, todayStr, formatDate, formatDateTime, formatYen, matchesQuery, byDateDesc, debounce } from '../utils.js';
 import * as L from '../labels.js';
-import { siteStatus, lastInspectionDate, siteInspections } from '../status.js';
+import { siteStatus, lastInspectionDate, siteInspections, latestBackups, siteSecurityReports } from '../status.js';
 import { pageHeader, statusBadge, statusDot, badge, table, emptyState, multiline } from '../ui.js';
 import { openRecordEditor, deleteRecord } from '../editors.js';
 import { openInspectionEditor, openInspectionView, inspectionSummary } from './inspections.js';
+import { secResultBadge, scanResultBadge, attachmentLinks } from './security.js';
+import { backupCell } from './backups.js';
+import { renewalBadge } from './contracts.js';
 
 /* =========================================================
    一覧
@@ -184,10 +187,82 @@ function tabWorklogs(site) {
     ], list, { empty: '作業履歴はまだありません' })}`;
 }
 
+function tabBackups(site) {
+  const db = state.db;
+  const latest = latestBackups(db, site.id);
+  const list = db.backups.filter((b) => b.siteId === site.id).sort(byDateDesc('backupDate'));
+  return html`
+    <div class="tab-actions"><button type="button" class="btn btn--primary btn--sm" data-add-record="backups">＋ バックアップを記録</button></div>
+    <div class="detail-grid">
+      ${Object.entries(L.BACKUP_KIND).filter(([k]) => k !== 'other' && (k !== 'wordpress' || site.siteType === 'wordpress') && (k !== 'vendor' || site.vendor))
+        .map(([k, label]) => html`<div class="card card--flat"><h3 class="card__subtitle">${label}</h3>${backupCell(latest[k])}</div>`)}
+    </div>
+    <div class="tab-section">
+      <h3 class="tab-section__title">バックアップ記録</h3>
+      ${table([
+        { label: '日付', render: (b) => formatDate(b.backupDate) },
+        { label: '種類', render: (b) => L.BACKUP_KIND[b.kind] },
+        { label: '方法・保存場所', render: (b) => html`${b.method || '—'}<span class="cell-sub">${b.location || ''} ${b.fileName || ''}</span>` },
+        { label: '復元確認', render: (b) => L.RESTORE_VERIFIED[b.restoreVerified] },
+        { label: '操作', className: 'col-actions', render: (b) => html`<button type="button" class="btn btn--ghost btn--sm" data-edit-record="backups:${b.id}">編集</button>` }
+      ], list, { empty: 'バックアップ記録はありません（未確認）' })}
+    </div>`;
+}
+
+function tabSecurity(site) {
+  const db = state.db;
+  const reports = siteSecurityReports(db, site.id, '9999-12-31');
+  const scans = db.serverScans.filter((x) => x.siteId === site.id).sort(byDateDesc('scanDate'));
+  const services = db.securityServices.filter((s) => s.targetSiteIds.includes(site.id));
+  return html`
+    <div class="tab-actions">
+      <button type="button" class="btn btn--primary btn--sm" data-add-record="securityReports">＋ 外部診断の結果</button>
+      <button type="button" class="btn btn--outline btn--sm" data-add-record="serverScans">＋ 不正ファイル検査</button>
+    </div>
+    <p class="matrix-note">契約中の診断サービス：${services.length ? services.map((s) => s.name).join('、') : '登録なし'}</p>
+    <div class="tab-section">
+      <h3 class="tab-section__title">外部のセキュリティ診断</h3>
+      ${table([
+        { label: '診断日', render: (r) => formatDate(r.diagnosisDate || r.receivedDate) },
+        { label: 'サービス', render: (r) => db.securityServices.find((s) => s.id === r.serviceId)?.name || '—' },
+        { label: '結果', render: (r) => html`${secResultBadge(r.result)}<span class="cell-sub">重要度：${L.SEVERITY[r.severity]}</span>` },
+        { label: '指摘事項', render: (r) => html`${r.findings || '—'}${attachmentLinks(r.attachments)}` },
+        { label: '対応状況', render: (r) => L.RESPONSE_STATUS[r.responseStatus] },
+        { label: '操作', className: 'col-actions', render: (r) => html`<button type="button" class="btn btn--ghost btn--sm" data-edit-record="securityReports:${r.id}">編集</button>` }
+      ], reports, { empty: '診断結果は登録されていません（未確認）' })}
+    </div>
+    <div class="tab-section">
+      <h3 class="tab-section__title">サーバー内部の不正ファイル検査</h3>
+      ${table([
+        { label: '検査日', render: (x) => formatDate(x.scanDate) },
+        { label: '方法', render: (x) => x.method || '—' },
+        { label: '結果', render: (x) => scanResultBadge(x.result) },
+        { label: '対応状況', render: (x) => L.SCAN_STATUS[x.status] },
+        { label: '操作', className: 'col-actions', render: (x) => html`<button type="button" class="btn btn--ghost btn--sm" data-edit-record="serverScans:${x.id}">編集</button>` }
+      ], scans, { empty: '検査記録はありません（未確認）' })}
+    </div>`;
+}
+
+function tabContracts(site) {
+  const list = state.db.contracts.filter((c) => c.siteIds.includes(site.id));
+  return html`
+    <div class="tab-actions"><button type="button" class="btn btn--primary btn--sm" data-add-record="contracts">＋ 契約を追加</button></div>
+    ${table([
+      { label: '契約サービス', render: (c) => html`${c.serviceName}<span class="cell-sub">${c.company || ''}・${L.CONTRACT_CATEGORY[c.category]}</span>` },
+      { label: '費用', render: (c) => (c.amount != null ? `${L.AMOUNT_UNIT[c.amountUnit]} ${formatYen(c.amount)}` : '—') },
+      { label: '次回更新日', render: renewalBadge },
+      { label: '共用サイト数', render: (c) => `${c.siteIds.length}サイト` },
+      { label: '操作', className: 'col-actions', render: (c) => html`<button type="button" class="btn btn--ghost btn--sm" data-edit-record="contracts:${c.id}">編集</button>` }
+    ], list, { empty: 'このサイトに紐づく契約はありません' })}`;
+}
+
 /** タブ定義（ここに追加すると詳細画面のタブが増える） */
 const TABS = [
   { key: 'overview', label: '概要', render: tabOverview },
   { key: 'inspections', label: '点検履歴', render: tabInspections, count: (s) => state.db.inspections.filter((r) => r.siteId === s.id).length },
+  { key: 'backups', label: 'バックアップ', render: tabBackups, count: (s) => state.db.backups.filter((r) => r.siteId === s.id).length },
+  { key: 'security', label: 'セキュリティ', render: tabSecurity, count: (s) => state.db.securityReports.filter((r) => r.siteId === s.id).length + state.db.serverScans.filter((r) => r.siteId === s.id).length },
+  { key: 'contracts', label: '契約', render: tabContracts, count: (s) => state.db.contracts.filter((c) => c.siteIds.includes(s.id)).length },
   { key: 'worklogs', label: '作業履歴', render: tabWorklogs, count: (s) => state.db.worklogs.filter((r) => r.siteId === s.id).length }
 ];
 
@@ -230,6 +305,13 @@ export function renderSiteDetail(root, { params: [id] }) {
       return;
     }
     if (t.dataset.viewInspection) openInspectionView(t.dataset.viewInspection);
+    if (t.dataset.addRecord) {
+      const presets = t.dataset.addRecord === 'contracts' ? { siteIds: [site.id] }
+        : t.dataset.addRecord === 'securityReports' ? { siteId: site.id, serviceId: state.db.securityServices.find((x) => x.targetSiteIds.includes(site.id))?.id || '' }
+          : { siteId: site.id };
+      if (t.dataset.addRecord === 'backups') presets.kind = site.siteType === 'wordpress' ? 'wordpress' : site.siteType === 'bears' ? 'vendor' : 'server';
+      openRecordEditor(t.dataset.addRecord, null, presets);
+    }
     if (t.dataset.editRecord) {
       const [col, rid] = t.dataset.editRecord.split(':');
       openRecordEditor(col, state.db[col].find((r) => r.id === rid));

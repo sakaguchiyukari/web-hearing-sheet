@@ -1034,6 +1034,11 @@ a {
   width: 1%;
 }
 
+.table .col-actions .btn-row {
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+}
+
 .table .col-wide {
   min-width: 280px;
 }
