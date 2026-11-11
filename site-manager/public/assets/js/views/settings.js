@@ -13,7 +13,7 @@ import { pageHeader, toast, confirmDialog, table, badge } from '../ui.js';
 import { renderFields, readFields } from '../form.js';
 import { notifyChanged } from '../editors.js';
 import { downloadCsv } from '../csv.js';
-import { lastInspectionDate } from '../status.js';
+import { lastInspectionDate, siteInspections, siteStatus } from '../status.js';
 
 const local = { checklistType: 'wordpress', draft: null };
 
@@ -26,7 +26,7 @@ const settingFields = () => [
   { name: 'inspectionIntervalDays', label: '点検の間隔（日）', type: 'number', required: true, min: 1, max: 366, step: 1, help: 'この日数を過ぎると「未確認（点検期限切れ）」になります' },
   { name: 'backupStaleDays', label: 'バックアップが古いと判断する日数', type: 'number', required: true, min: 1, max: 366, step: 1 },
   { name: 'sslAlertDays', label: 'SSL期限の警告（何日前から）', type: 'number', required: true, min: 1, max: 366, step: 1 },
-  { name: 'contractAlertDays', label: '契約更新の警告（何日前から）', type: 'number', required: true, min: 1, max: 366, step: 1 }
+  { name: 'domainAlertDays', label: 'ドメイン期限の警告（何日前から）', type: 'number', required: true, min: 1, max: 366, step: 1 }
 ];
 
 /* =========================================================
@@ -34,6 +34,9 @@ const settingFields = () => [
    ========================================================= */
 function checklistRows(items) {
   return html`${items.map((it, i) => html`<li class="list-editor__row" data-index="${i}">
+    <select class="input input--select input--sm" aria-label="分類" data-field="category">
+      ${Object.entries(L.CHECK_CATEGORIES).map(([k, v]) => html`<option value="${k}"${(it.category || 'other') === k ? raw(' selected') : ''}>${v}</option>`)}
+    </select>
     <input class="input input--sm" type="text" value="${it.label}" maxlength="200" required aria-label="点検項目名" data-field="label" placeholder="点検項目名">
     <input class="input input--sm list-editor__hint" type="text" value="${it.hint}" maxlength="300" aria-label="確認方法のヒント" data-field="hint" placeholder="確認方法のヒント（任意）">
     <span class="list-editor__buttons">
@@ -56,8 +59,8 @@ const DATA_EXPORTS = {
     file: 'site-ledger',
     label: 'サイト管理台帳',
     rows: (db) => [
-      ['サイト名', 'ドメイン', 'URL', 'サイトの種類', 'CMS', 'WordPressテーマ', '運用状況', '管理担当者', 'レンタルサーバー会社', 'サーバー契約情報', 'ドメイン契約情報', 'SSL確認状況', 'SSL有効期限', '制作・保守会社', '制作会社の担当範囲', '自社の担当範囲', '最終点検日', '次回点検予定日', '備考'],
-      ...db.sites.map((s) => [s.name, s.domain, s.url, t(L.SITE_TYPES, s.siteType), s.cmsName, s.wpTheme, t(L.SITE_ACTIVE, s.active), s.manager, s.serverCompany, s.serverContract, s.domainContract,
+      ['サイト名', 'ドメイン', 'URL', 'サイトの種類', 'CMS', 'WordPressテーマ', '運用状況', '管理担当者', 'レンタルサーバー会社', 'サーバー情報', 'ドメイン管理会社', 'ドメイン有効期限', 'ドメイン情報', 'SSL確認状況', 'SSL有効期限', '制作・保守会社', '制作会社の担当範囲', '自社の担当範囲', '最終点検日', '次回点検予定日', '備考'],
+      ...db.sites.map((s) => [s.name, s.domain, s.url, t(L.SITE_TYPES, s.siteType), s.cmsName, s.wpTheme, t(L.SITE_ACTIVE, s.active), s.manager, s.serverCompany, s.serverContract, s.domainRegistrar, d(s.domainExpiry), s.domainContract,
         t(L.SSL_STATUS, s.sslStatus), d(s.sslExpiry), s.vendor, s.vendorScope, s.ownScope, d(lastInspectionDate(db, s)), d(s.nextInspectionDate), s.notes])
     ]
   },
@@ -105,13 +108,54 @@ const DATA_EXPORTS = {
       ...db.backups.map((b) => [d(b.backupDate), siteName(b.siteId), t(L.BACKUP_KIND, b.kind), b.method, b.location, b.fileName, b.target, t(L.RESTORE_VERIFIED, b.restoreVerified), d(b.restoreTestDate), b.notes])
     ]
   },
-  contracts: {
-    file: 'contracts',
-    label: '契約・支払い',
+  todos: {
+    file: 'todos',
+    label: 'ToDo',
     rows: (db) => [
-      ['契約サービス名', '契約会社', '種類', '対象サイト', '契約内容', '費用（円）', '費用の単位', '支払い周期', '次回更新日', '支払い確認日', '契約担当者', '契約状況', '備考'],
-      ...db.contracts.map((c) => [c.serviceName, c.company, t(L.CONTRACT_CATEGORY, c.category), c.siteIds.map(siteName).join('、'), c.content, c.amount, t(L.AMOUNT_UNIT, c.amountUnit),
-        t(L.PAYMENT_CYCLE, c.paymentCycle), d(c.nextRenewalDate), d(c.paymentConfirmedDate), c.owner, t(L.CONTRACT_STATUS, c.status), c.notes])
+      ['やること', 'サイト', '分類', '優先度', '状況', '期限', '担当者', '詳細', '登録元', '完了日', '対応メモ'],
+      ...db.todos.map((x) => [x.title, x.siteId ? siteName(x.siteId) : '全サイト共通', t(L.CHECK_CATEGORIES, x.category), t(L.PRIORITY, x.priority), t(L.TODO_STATUS, x.status),
+        d(x.dueDate), x.assignee, x.detail, x.source, d(x.completedDate), x.notes])
+    ]
+  }
+};
+
+/* =========================================================
+   Notion取り込み用CSV
+   1列目をページ名にし、日付は YYYY-MM-DD、選択肢は短い語にそろえる
+   ========================================================= */
+const NOTION_EXPORTS = {
+  todos: {
+    file: 'todos',
+    label: 'ToDoリスト',
+    rows: (db) => [
+      ['やること', '状況', '優先度', '期限', 'サイト', '分類', '担当者', '詳細', '登録元', '完了日'],
+      ...db.todos.map((x) => [x.title, t(L.TODO_STATUS, x.status), t(L.PRIORITY, x.priority), x.dueDate, x.siteId ? siteName(x.siteId) : '全サイト共通',
+        t(L.CHECK_CATEGORIES, x.category), x.assignee, x.detail, x.source, x.completedDate])
+    ]
+  },
+  checks: {
+    file: 'security-checks',
+    label: 'セキュリティチェック表（最新の結果）',
+    rows: (db) => [
+      ['チェック項目', '結果', 'サイト', 'サイトの種類', '分類', '点検日', '担当者', 'コメント'],
+      ...db.sites.filter((s) => s.active !== 'archived').flatMap((s) => {
+        const latest = siteInspections(db, s.id)[0];
+        // 点検済みなら最新の結果、未点検ならテンプレートの項目を「未確認」で出す
+        const items = latest ? latest.items : (db.checklists[s.siteType] || []).map((c) => ({ label: c.label, category: c.category, result: 'unchecked', comment: '' }));
+        return items.map((it) => [it.label, t(L.RESULTS, it.result), s.name, t(L.SITE_TYPES, s.siteType), t(L.CHECK_CATEGORIES, it.category || 'other'), latest?.date || '', latest?.inspector || '', it.comment]);
+      })
+    ]
+  },
+  sites: {
+    file: 'sites',
+    label: 'サイト一覧（状態つき）',
+    rows: (db) => [
+      ['サイト名', '状態', '種類', 'ドメイン', 'URL', 'サーバー会社', 'ドメイン管理会社', 'ドメイン有効期限', 'SSL有効期限', '最終点検日', '次回点検予定日', '未完了ToDo', '確認が必要な理由'],
+      ...db.sites.filter((s) => s.active !== 'archived').map((s) => {
+        const st = siteStatus(db, s);
+        return [s.name, L.STATUS_LEVELS[st.level], t(L.SITE_TYPES, s.siteType), s.domain, s.url, s.serverCompany, s.domainRegistrar, s.domainExpiry, s.sslExpiry,
+          lastInspectionDate(db, s), s.nextInspectionDate, db.todos.filter((x) => x.siteId === s.id && x.status !== 'done').length, st.reasons.map((r) => r.text).join(' / ')];
+      })
     ]
   }
 };
@@ -143,7 +187,8 @@ export async function renderSettings(root) {
         <h3 class="card__subtitle">システムが自動で行うこと</h3>
         <ul class="report__list">
           <li>記録内容からサイトの状態を色分け判定（未確認は「問題なし」にしない）</li>
-          <li>契約更新・SSL期限・点検予定・バックアップの古さの計算と警告</li>
+          <li>ドメイン期限・SSL期限・点検予定・ToDoの期限・バックアップの古さの計算と警告</li>
+          <li>点検で「要確認・対応中」にした項目や診断の指摘をToDoへ自動登録</li>
           <li>ダッシュボードと月次報告書の集計、CSV出力</li>
           <li>データ保存時の自動スナップショット（1日1回・削除や復元の前）</li>
         </ul>
@@ -151,12 +196,12 @@ export async function renderSettings(root) {
         <ul class="report__list">
           <li>日常点検の結果、作業・トラブルの記録</li>
           <li>セキュリティ診断レポートの内容（転記・ファイル添付）と不正ファイル検査の結果</li>
-          <li>バックアップ取得の記録、契約・支払いの情報、報告書の特記事項</li>
+          <li>バックアップ取得の記録、サーバー・ドメインの情報、ToDoの完了、報告書の特記事項</li>
         </ul>
         <h3 class="card__subtitle">行わないこと</h3>
         <ul class="report__list">
           <li>WordPress・サーバーへの自動ログインや自動同期、外部サイトへの自動アクセス・自動診断</li>
-          <li>パスワード・APIキー・FTP情報などの秘密情報の保存</li>
+          <li>パスワード・APIキー・FTP情報などの秘密情報の保存、契約費用・支払いの管理（別システムで管理）</li>
         </ul>
       </section>
     </div>
@@ -225,6 +270,12 @@ export async function renderSettings(root) {
           ${Object.entries(DATA_EXPORTS).map(([k, v]) => html`<button type="button" class="btn btn--ghost btn--sm" data-export="${k}">${v.label}</button>`)}
         </div>
 
+        <h3 class="card__subtitle">Notionに取り込む（CSV）</h3>
+        <p class="field__help">Notionで「インポート → CSV」を選ぶと、データベース（表）として取り込めます。1列目がページ名になります。取り込み後に「状況」「優先度」などの列をセレクト型に変えると、ボードやフィルターで使えます。</p>
+        <div class="data-actions">
+          ${Object.entries(NOTION_EXPORTS).map(([k, v]) => html`<button type="button" class="btn btn--outline btn--sm" data-notion="${k}">${v.label}</button>`)}
+        </div>
+
         <h3 class="card__subtitle">自動スナップショット</h3>
         <div id="snapshot-list"><p class="text-muted">読み込み中…</p></div>
       </section>
@@ -257,7 +308,7 @@ function bindSettings(root) {
   const syncDraft = () => {
     local.draft[local.checklistType] = [...editor.querySelectorAll('.list-editor__row')].map((li) => {
       const old = local.draft[local.checklistType][Number(li.dataset.index)] || {};
-      return { id: old.id, label: li.querySelector('[data-field=label]').value.trim(), hint: li.querySelector('[data-field=hint]').value.trim() };
+      return { id: old.id, category: li.querySelector('[data-field=category]').value, label: li.querySelector('[data-field=label]').value.trim(), hint: li.querySelector('[data-field=hint]').value.trim() };
     });
   };
   const redraw = () => { editor.innerHTML = String(checklistRows(local.draft[local.checklistType])); };
@@ -269,7 +320,7 @@ function bindSettings(root) {
   });
   root.querySelector('#checklist-add').addEventListener('click', () => {
     syncDraft();
-    local.draft[local.checklistType].push({ id: `${local.checklistType.slice(0, 2)}-${Date.now().toString(36)}`, label: '', hint: '' });
+    local.draft[local.checklistType].push({ id: `${local.checklistType.slice(0, 2)}-${Date.now().toString(36)}`, category: 'other', label: '', hint: '' });
     redraw();
     editor.querySelector('.list-editor__row:last-child input').focus();
   });
@@ -364,6 +415,12 @@ function bindSettings(root) {
       toast(`復元できませんでした：${err.message}`, 'error');
     }
   });
+
+  /* Notion用CSV */
+  root.querySelectorAll('[data-notion]').forEach((b) => b.addEventListener('click', () => {
+    const def = NOTION_EXPORTS[b.dataset.notion];
+    downloadCsv(`notion-${def.file}_${todayStr()}.csv`, def.rows(state.db));
+  }));
 
   /* CSV */
   root.querySelectorAll('[data-export]').forEach((b) => b.addEventListener('click', () => {

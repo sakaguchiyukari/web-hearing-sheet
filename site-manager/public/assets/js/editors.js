@@ -42,13 +42,15 @@ export const FORMS = {
       { name: 'sslStatus', label: 'SSL証明書の確認状況', type: 'select', options: L.SSL_STATUS },
       { name: 'sslExpiry', label: 'SSL証明書の有効期限', type: 'date' },
       { name: 'sslCheckedDate', label: 'SSLを確認した日', type: 'date' },
-      { name: 'serverContract', label: 'サーバー契約情報', type: 'textarea', maxlength: 1000, placeholder: '例）スタンダードプラン／年払い／契約者：総務部' },
-      { name: 'domainContract', label: 'ドメイン契約情報', type: 'textarea', maxlength: 1000, placeholder: '例）〇〇ドメインで管理／自動更新あり' },
+      { name: 'domainRegistrar', label: 'ドメイン管理会社', type: 'text', maxlength: 100, placeholder: '例）〇〇ドメイン' },
+      { name: 'domainExpiry', label: 'ドメインの有効期限', type: 'date', help: '期限が近づくとダッシュボードに表示されます' },
+      { name: 'serverContract', label: 'サーバー情報', type: 'textarea', maxlength: 1000, placeholder: '例）スタンダードプラン／PHP 8.3／WAF有効' },
+      { name: 'domainContract', label: 'ドメイン情報', type: 'textarea', maxlength: 1000, placeholder: '例）DNSは〇〇で管理／メールも同じドメインを使用' },
 
       { type: 'heading', label: '担当範囲', help: '制作会社と自社の役割分担を記録します' },
       { name: 'vendor', label: '制作会社・保守会社', type: 'text', maxlength: 200, full: true, placeholder: '例）株式会社〇〇（保守契約あり）' },
       { name: 'vendorScope', label: '制作会社の担当範囲', type: 'textarea', maxlength: 2000, placeholder: '例）CMSのシステム管理・保守、障害対応' },
-      { name: 'ownScope', label: '自社担当者の担当範囲', type: 'textarea', maxlength: 2000, placeholder: '例）編集画面での更新、サーバー契約・支払い' },
+      { name: 'ownScope', label: '自社担当者の担当範囲', type: 'textarea', maxlength: 2000, placeholder: '例）編集画面での更新、サーバー・ドメインの管理' },
 
       { type: 'heading', label: '点検予定' },
       { name: 'lastInspectionManual', label: '最終点検日（導入前の記録）', type: 'date', help: '点検記録を登録すると、最新の点検日が自動で使われます' },
@@ -121,6 +123,18 @@ export const FORMS = {
       if (v.result === 'ok' && v.responseStatus === 'unchecked') v.responseStatus = 'na';
       return v;
     },
+    afterSave: async (rec, isNew) => {
+      if (!isNew || rec.result !== 'findings' || !['unchecked', 'open', 'progress'].includes(rec.responseStatus)) return;
+      await createTodo({
+        title: `診断の指摘に対応：${(rec.findings || '指摘事項').split('\n')[0].slice(0, 150)}`,
+        siteId: rec.siteId,
+        category: 'monitor',
+        priority: rec.severity === 'critical' ? 'urgent' : rec.severity === 'high' ? 'high' : 'normal',
+        detail: rec.findings,
+        source: 'セキュリティ診断'
+      });
+      toast('指摘事項をToDoに登録しました');
+    },
     extra: (values) => attachmentField(values.attachments || []),
     onOpen: (form) => bindAttachmentField(form),
     readExtra: (form) => ({ attachments: readAttachmentIds(form) })
@@ -146,6 +160,11 @@ export const FORMS = {
     beforeSave: (v) => {
       if (v.result === 'detected' && v.status === 'na') v.status = 'open';
       return v;
+    },
+    afterSave: async (rec, isNew) => {
+      if (!isNew || rec.result !== 'detected' || !['open', 'progress'].includes(rec.status)) return;
+      await createTodo({ title: '不審ファイルの調査・削除', siteId: rec.siteId, category: 'server', priority: 'urgent', detail: rec.detail, source: '不正ファイル検査' });
+      toast('不審ファイルの対応をToDoに登録しました');
     }
   },
 
@@ -167,25 +186,27 @@ export const FORMS = {
     defaults: () => ({ kind: 'wordpress', backupDate: todayStr(), restoreVerified: 'unknown' })
   },
 
-  /* ---------- 契約・支払い ---------- */
-  contracts: {
-    title: '契約',
+  /* ---------- ToDo（対応リスト） ---------- */
+  todos: {
+    title: 'ToDo',
     fields: () => [
-      { name: 'serviceName', label: '契約サービス名', type: 'text', required: true, maxlength: 200, placeholder: '例）レンタルサーバー スタンダードプラン' },
-      { name: 'company', label: '契約会社', type: 'text', maxlength: 200, placeholder: '例）〇〇株式会社' },
-      { name: 'category', label: '契約の種類', type: 'select', options: L.CONTRACT_CATEGORY },
-      { name: 'status', label: '契約状況', type: 'select', options: L.CONTRACT_STATUS },
-      { name: 'siteIds', label: '対象サイト', type: 'checkboxes', options: siteOptions(), help: '同じサーバー契約を複数サイトで使っている場合は、すべて選択してください' },
-      { name: 'amount', label: '費用（税込・円）', type: 'number', min: 0, step: 1, inputmode: 'numeric', placeholder: '例）13200' },
-      { name: 'amountUnit', label: '費用の単位', type: 'select', options: L.AMOUNT_UNIT },
-      { name: 'paymentCycle', label: '支払い周期', type: 'select', options: L.PAYMENT_CYCLE },
-      { name: 'nextRenewalDate', label: '次回更新日', type: 'date' },
-      { name: 'paymentConfirmedDate', label: '支払い確認日', type: 'date' },
-      { name: 'owner', label: '契約担当者', type: 'text', maxlength: 100, list: staffOptions() },
-      { name: 'content', label: '契約内容', type: 'textarea', maxlength: 3000, placeholder: '例）ディスク300GB／自動更新あり' },
-      { name: 'notes', label: '備考', type: 'textarea', maxlength: 3000, placeholder: 'ログインID・パスワードは記載しないでください' }
+      { name: 'title', label: 'やること', type: 'text', required: true, maxlength: 200, full: true, placeholder: '例）使っていないプラグインを削除する' },
+      { name: 'siteId', label: '対象サイト', type: 'select', emptyLabel: '全サイト共通・サイトを指定しない', options: siteOptions() },
+      { name: 'category', label: '分類', type: 'select', options: L.CHECK_CATEGORIES },
+      { name: 'priority', label: '優先度', type: 'select', options: L.PRIORITY, help: '「至急」で未完了のものは、サイトの状態が赤になります' },
+      { name: 'dueDate', label: '期限', type: 'date' },
+      { name: 'assignee', label: '担当者', type: 'text', maxlength: 100, list: staffOptions() },
+      { name: 'status', label: '状況', type: 'select', options: L.TODO_STATUS },
+      { name: 'detail', label: '詳細・手順', type: 'textarea', maxlength: 3000, placeholder: '何を・どこで・どうするか' },
+      { name: 'notes', label: '対応メモ', type: 'textarea', maxlength: 3000, placeholder: '対応した内容・結果' },
+      { name: 'completedDate', label: '完了日', type: 'date', help: '「完了」で未入力の場合は今日の日付が入ります' }
     ],
-    defaults: () => ({ category: 'server', status: 'active', amountUnit: 'year', paymentCycle: 'yearly' })
+    defaults: () => ({ status: 'open', priority: 'normal', category: 'other', assignee: state.me?.displayName || '' }),
+    beforeSave: (v) => {
+      if (v.status === 'done' && !v.completedDate) v.completedDate = todayStr();
+      if (v.status !== 'done') v.completedDate = '';
+      return v;
+    }
   }
 };
 
@@ -251,6 +272,9 @@ const readAttachmentIds = (form) => [...form.querySelectorAll('[data-attachment-
 /* =========================================================
    保存・削除
    ========================================================= */
+/** ToDoを1件登録する（点検・診断結果からの自動登録用） */
+export const createTodo = (values) => api('POST', '/api/c/todos', { status: 'open', priority: 'normal', category: 'other', ...values });
+
 export function saveRecord(collection, values, id) {
   return id
     ? api('PUT', `/api/c/${collection}/${id}`, values)
@@ -284,7 +308,8 @@ export function openRecordEditor(collection, record = null, presets = {}) {
         });
         if (!ok) return false;
       }
-      await saveRecord(collection, data, record?.id);
+      const saved = await saveRecord(collection, data, record?.id);
+      if (def.afterSave) await def.afterSave(saved.record, !record);
       toast(`${def.title}を${record ? '更新' : '登録'}しました`);
       await notifyChanged();
       return true;
@@ -301,7 +326,8 @@ function relatedCounts(siteId) {
     ['作業履歴', n(db.worklogs)],
     ['バックアップ記録', n(db.backups)],
     ['セキュリティ診断結果', n(db.securityReports)],
-    ['不正ファイル検査', n(db.serverScans)]
+    ['不正ファイル検査', n(db.serverScans)],
+    ['ToDo', n(db.todos)]
   ].filter(([, c]) => c > 0);
 }
 

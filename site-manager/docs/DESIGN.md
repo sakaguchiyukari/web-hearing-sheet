@@ -1,4 +1,6 @@
-# Webサイト管理システム 設計書
+# Webサイト セキュリティ管理システム 設計書
+
+> 第2版：契約・支払い管理を廃止し、セキュリティ点検（チェックリスト）とToDo管理に特化。データ形式 v2（v1 のデータは起動時に自動変換し、変換前の控えを `data/backups/` に保存）。
 
 ## 1. システム構成
 
@@ -14,9 +16,9 @@
 
 | 区分 | 内容 |
 |---|---|
-| システムが自動で行う | 状態の色分け判定、期限（契約更新・SSL・点検・バックアップ）の計算と警告、集計、報告書の生成、CSV出力、自動スナップショット |
-| 担当者が手動で入力する | 点検結果、作業・トラブル記録、セキュリティ診断結果（レポート内容の転記・添付）、不正ファイル検査結果、バックアップ実施記録、契約・支払い情報、報告書の特記事項 |
-| 実装しない | WordPress・サーバーへの自動ログイン、外部サイトへのアクセス、自動診断、パスワード等の秘密情報の保存 |
+| システムが自動で行う | 状態の色分け判定、期限（ドメイン・SSL・点検・ToDo・バックアップ）の計算と警告、点検の要確認項目・診断指摘のToDo自動登録、集計、報告書の生成、CSV出力（Notion取り込み用を含む）、自動スナップショット |
+| 担当者が手動で入力する | 点検結果、ToDoの追加・完了、作業・トラブル記録、セキュリティ診断結果（レポート内容の転記・添付）、不正ファイル検査結果、バックアップ実施記録、サーバー・ドメイン情報、報告書の特記事項 |
+| 実装しない | WordPress・サーバーへの自動ログイン、外部サイトへのアクセス、自動診断、パスワード等の秘密情報の保存、契約費用・支払いの管理（別システムで管理） |
 
 ## 2. 画面構成
 
@@ -24,14 +26,14 @@
 ログイン（初回は管理者アカウント作成）
 └ 左メニュー
    ├ ダッシュボード ……… 件数サマリー／サイト状態（色分け）／対応中の問題／予定／直近の作業
-   ├ サイト管理台帳 ……… 一覧（検索・絞り込み）→ サイト詳細（タブ：概要・点検・バックアップ・セキュリティ・契約・作業履歴）
-   ├ 日常点検 …………… 点検記録一覧／点検入力（サイト種類ごとの項目）
+   ├ サイト管理台帳 ……… 一覧（検索・絞り込み）→ サイト詳細（タブ：概要・ToDo・点検・バックアップ・セキュリティ・作業履歴）
+   ├ セキュリティ点検 …… 点検記録一覧／点検入力（サイト種類ごと・分類つきチェックリスト、要確認→ToDo自動登録）
+   ├ ToDo（対応リスト）… 一覧（状況・サイト・分類・優先度）／完了切り替え
    ├ 作業履歴・トラブル … 一覧（検索・期間・状態）
    ├ セキュリティ管理 …… 診断サービス契約／外部診断結果（添付可）／サーバー内部の不正ファイル検査／サイト別状況
    ├ バックアップ管理 …… サイト別状況（WordPress／サーバー全体を区別）／実施記録
-   ├ 契約・支払い ……… 契約一覧（複数サイト共用可・更新期限警告・年間費用）
    ├ 月次報告書 ………… 月選択・特記事項入力・プレビュー／印刷・PDF／CSV
-   └ 設定 ………………… 基本設定・しきい値／点検項目テンプレート／ユーザー／データのバックアップ・復元・CSV
+   └ 設定 ………………… 基本設定・しきい値／点検項目テンプレート（分類つき）／ユーザー／データのバックアップ・復元・CSV・Notion用CSV
 ```
 
 ## 3. データ設計（`data/db.json`）
@@ -40,17 +42,17 @@
 
 | コレクション | 主な項目 |
 |---|---|
-| `sites` サイト | name, domain, url, siteType(wordpress/static/bears/other), cmsName, wpTheme, active(運用中/運用終了), serverCompany, serverContract, domainContract, sslStatus, sslExpiry, sslCheckedDate, manager, vendor, vendorScope, ownScope, lastInspectionManual, nextInspectionDate, notes |
-| `inspections` 点検記録 | siteId, date, inspector, items[{itemId, label, result, comment}], summary |
+| `sites` サイト | name, domain, url, siteType(wordpress/static/bears/other), cmsName, wpTheme, active(運用中/運用終了), serverCompany, serverContract(サーバー情報), domainRegistrar, domainExpiry, domainContract(ドメイン情報), sslStatus, sslExpiry, sslCheckedDate, manager, vendor, vendorScope, ownScope, lastInspectionManual, nextInspectionDate, notes |
+| `inspections` 点検記録 | siteId, date, inspector, items[{itemId, category, label, result, comment}], summary |
+| `todos` ToDo | title, siteId（空なら全サイト共通）, category, priority, status, dueDate, assignee, detail, source（登録元）, completedDate, notes |
 | `worklogs` 作業・トラブル | siteId, occurredDate, kind(作業/トラブル), workContent, troubleContent, cause, action, assignee, status, priority, completedDate, notes |
 | `securityServices` 診断サービス契約 | name, provider, contractInfo, targetSiteIds[], targetDomains, scope, notes |
 | `securityReports` 外部診断結果 | serviceId, siteId, diagnosisDate, receivedDate, result, findings, severity, responseStatus, responseDetail, nextCheckDate, attachments[], notes |
 | `serverScans` 不正ファイル検査 | siteId, scanDate, method, scope, result, detail, action, status, inspector, nextDate, notes |
 | `backups` バックアップ記録 | siteId, kind(wordpress/server/vendor/other), backupDate, method, location, fileName, target, restoreVerified, restoreTestDate, notes |
-| `contracts` 契約・支払い | serviceName, company, category, siteIds[], content, amount, amountUnit, paymentCycle, nextRenewalDate, paymentConfirmedDate, owner, status, notes |
 | `attachments` 添付メタ情報 | name, size, mime（実体は `data/attachments/<id>.bin`） |
-| `settings` 設定 | orgName, staff[], inspectionIntervalDays, backupStaleDays, sslAlertDays, contractAlertDays |
-| `checklists` 点検項目 | wordpress / static / bears / other ごとの項目一覧（画面から編集可） |
+| `settings` 設定 | orgName, staff[], inspectionIntervalDays, backupStaleDays, sslAlertDays, domainAlertDays |
+| `checklists` 点検項目 | wordpress / static / bears / other ごとの項目一覧 [{id, category, label, hint}]（画面から編集可）。分類：サイト本体・CMS／アカウント・ログイン／サーバー／ドメイン・DNS／SSL・通信／バックアップ／診断・監視／制作会社／その他 |
 | `reportNotes` 報告書メモ | `YYYY-MM` ごとに reportDate, author, plans, special |
 
 点検記録には「その時点の項目名」を保存するため、点検項目テンプレートを後から変えても過去の履歴は変わりません。
@@ -61,9 +63,9 @@
 
 | 色 | 主な条件 |
 |---|---|
-| 赤（至急） | 至急のトラブルが未解決／重要度「高・緊急」の診断指摘が未対応／不審ファイル検出が未解決／SSL期限切れ／契約更新日超過 |
-| 黄（要確認） | 点検で「要確認・対応中」あり／次回点検日超過／未解決トラブル／診断指摘が未対応／診断の次回確認日超過／バックアップが古い／SSL・契約の期限が近い |
-| グレー（未確認） | 点検記録なし・点検期限切れ／点検に「未確認」項目あり／SSL未確認／バックアップ記録なし／セキュリティ診断結果なし |
+| 赤（至急） | 至急のトラブル・ToDoが未完了／重要度「高・緊急」の診断指摘が未対応／不審ファイル検出が未解決／SSL期限切れ／ドメイン期限超過 |
+| 黄（要確認） | 点検で「要確認・対応中」あり／次回点検日超過／未解決トラブル／診断指摘が未対応／診断の次回確認日超過／バックアップが古い／SSL・ドメインの期限が近い／未完了のToDoあり |
+| グレー（未確認） | 点検記録なし・点検期限切れ／点検に「未確認」項目あり／SSL未確認／ドメイン期限が未登録／バックアップ記録なし／セキュリティ診断結果なし |
 | 緑（問題なし） | 上記のいずれにも該当しない |
 
 判定理由は画面に文章で表示します。

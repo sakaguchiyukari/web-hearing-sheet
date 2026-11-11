@@ -1,6 +1,6 @@
 /**
  * 一覧画面の共通部品（検索・絞り込み・テーブル・編集/削除ボタン）
- * 作業履歴・バックアップ・契約・セキュリティなど、同じ形の画面で再利用する。
+ * 作業履歴・ToDo・バックアップ・セキュリティなど、同じ形の画面で再利用する。
  */
 import { state } from './state.js';
 import { html, raw, matchesQuery, debounce } from './utils.js';

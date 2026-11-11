@@ -38,8 +38,10 @@ export const COLLECTIONS = {
       wpTheme: str('WordPressテーマ', 100),
       active: oneOf('運用状況', L.SITE_ACTIVE, 'active'),
       serverCompany: str('レンタルサーバー会社', 100),
-      serverContract: text('サーバー契約情報', 1000),
-      domainContract: text('ドメイン契約情報', 1000),
+      serverContract: text('サーバー情報', 1000),
+      domainRegistrar: str('ドメイン管理会社', 100),
+      domainExpiry: date('ドメインの有効期限'),
+      domainContract: text('ドメイン情報', 1000),
       sslStatus: oneOf('SSL証明書の確認状況', L.SSL_STATUS, 'unchecked'),
       sslExpiry: date('SSL証明書の有効期限'),
       sslCheckedDate: date('SSL確認日'),
@@ -139,22 +141,20 @@ export const COLLECTIONS = {
       notes: text('備考', 3000)
     }
   },
-  contracts: {
-    label: '契約',
+  todos: {
+    label: 'ToDo',
     fields: {
-      serviceName: str('契約サービス名', 200, { required: true }),
-      company: str('契約会社', 200),
-      category: oneOf('契約の種類', L.CONTRACT_CATEGORY, 'server'),
-      siteIds: refs('対象サイト', 'sites'),
-      content: text('契約内容', 3000),
-      amount: num('費用（円）', 0, 1e10),
-      amountUnit: oneOf('費用の単位', L.AMOUNT_UNIT, 'year'),
-      paymentCycle: oneOf('支払い周期', L.PAYMENT_CYCLE, 'yearly'),
-      nextRenewalDate: date('次回更新日'),
-      paymentConfirmedDate: date('支払い確認日'),
-      owner: str('契約担当者', 100),
-      status: oneOf('契約状況', L.CONTRACT_STATUS, 'active'),
-      notes: text('備考', 3000)
+      title: str('やること', 200, { required: true }),
+      siteId: ref('対象サイト', 'sites'),
+      category: oneOf('分類', L.CHECK_CATEGORIES, 'other'),
+      priority: oneOf('優先度', L.PRIORITY, 'normal'),
+      status: oneOf('状況', L.TODO_STATUS, 'open'),
+      dueDate: date('期限'),
+      assignee: str('担当者', 100),
+      detail: text('詳細・手順', 3000),
+      source: str('登録元', 100),
+      completedDate: date('完了日'),
+      notes: text('対応メモ', 3000)
     }
   }
 };
@@ -231,6 +231,7 @@ function validateField(name, spec, value, db, opts) {
         const result = Object.hasOwn(L.RESULTS, it.result) ? it.result : 'unchecked';
         return {
           itemId: String(it.itemId ?? '').replace(/[^a-z0-9-]/gi, '').slice(0, 64),
+          category: Object.hasOwn(L.CHECK_CATEGORIES, it.category) ? it.category : 'other',
           label,
           result,
           comment: cleanText(String(it.comment ?? ''), true).slice(0, 1000)
@@ -276,7 +277,8 @@ export function validateSettings(input) {
     inspectionIntervalDays: intIn(input.inspectionIntervalDays, 1, 366, '点検間隔'),
     backupStaleDays: intIn(input.backupStaleDays, 1, 366, 'バックアップ警告日数'),
     sslAlertDays: intIn(input.sslAlertDays, 1, 366, 'SSL期限の警告日数'),
-    contractAlertDays: intIn(input.contractAlertDays, 1, 366, '契約更新の警告日数')
+    // 旧バージョンのデータ（contractAlertDays）からも読み込めるようにする
+    domainAlertDays: intIn(input.domainAlertDays ?? input.contractAlertDays ?? 60, 1, 366, 'ドメイン期限の警告日数')
   };
 }
 
@@ -288,6 +290,7 @@ export function validateChecklists(input) {
     if (list.length > 60) throw new HttpError(400, '点検項目は1種類あたり60件までです');
     out[type] = list.map((it) => ({
       id: String(it?.id ?? '').replace(/[^a-z0-9-]/gi, '').slice(0, 64),
+      category: Object.hasOwn(L.CHECK_CATEGORIES, it?.category) ? it.category : 'other',
       label: cleanText(String(it?.label ?? ''), false).slice(0, 200),
       hint: cleanText(String(it?.hint ?? ''), false).slice(0, 300)
     })).filter((it) => it.id && it.label);

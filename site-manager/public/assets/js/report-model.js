@@ -7,7 +7,7 @@ import { todayStr, monthEnd, monthLabel, formatDate, daysBetween } from './utils
 import * as L from './labels.js';
 import {
   siteStatus, siteInspections, countResults, latestBackups, siteSecurityReports,
-  openIssues, upcomingEvents, isOpenScan
+  openIssues, upcomingEvents, isOpenScan, isOpenTodo
 } from './status.js';
 
 /* 専門用語のかんたんな説明（報告書の末尾に掲載） */
@@ -19,7 +19,9 @@ export const GLOSSARY = [
   ['静的HTMLサイト', '管理システムを使わず、ページのファイルを直接置いているサイト。'],
   ['SSL証明書', 'サイトの通信を暗号化する仕組み（URLが https になる）。有効期限が切れると「安全でないサイト」と表示されます。'],
   ['ドメイン', 'サイトの住所にあたる名前（例：example.co.jp）。更新を忘れるとサイトが表示されなくなります。'],
-  ['レンタルサーバー', 'サイトのデータを置いておく場所を借りる契約。'],
+  ['レンタルサーバー', 'サイトのデータを置いておく場所。管理画面のログインやWAFなどの設定もここで行います。'],
+  ['WAF（ワフ）', 'サイトへの不正な通信を自動で止める防御機能。多くのレンタルサーバーに付属しています。'],
+  ['DNS', 'ドメイン名とサーバーを結びつける設定。書き換えられると偽サイトに誘導されるおそれがあります。'],
   ['バックアップ', '万一に備えたデータの控え。WordPressのデータ控えと、サーバー全体の控えは別物です。'],
   ['復元（リストア）', 'バックアップからサイトを元の状態に戻すこと。手順を事前に確認しておくことが大切です。'],
   ['二段階認証', 'パスワードに加えて、スマホ等の確認コードでログインする仕組み。不正ログインを防ぎます。'],
@@ -101,15 +103,26 @@ export function buildReport(db, ym) {
     };
   });
 
-  /* ---- 契約 ---- */
-  const contracts = db.contracts
-    .filter((c) => c.status === 'active')
-    .map((c) => {
-      const days = c.nextRenewalDate ? daysBetween(asOf, c.nextRenewalDate) : null;
-      const level = days === null ? 'grey' : days < 0 ? 'red' : days <= db.settings.contractAlertDays ? 'yellow' : 'green';
-      return { ...c, days, level, siteNames: c.siteIds.map((id) => db.sites.find((s) => s.id === id)?.name).filter(Boolean) };
-    })
-    .sort((a, b) => (a.nextRenewalDate || '9999').localeCompare(b.nextRenewalDate || '9999'));
+  /* ---- サーバー・ドメイン・SSL ---- */
+  const expiryLevel = (date, alertDays) => {
+    if (!date) return { days: null, level: 'grey' };
+    const days = daysBetween(asOf, date);
+    return { days, level: days < 0 ? 'red' : days <= alertDays ? 'yellow' : 'green' };
+  };
+  const infra = sites.map((site) => ({
+    site,
+    domain: expiryLevel(site.domainExpiry, db.settings.domainAlertDays),
+    ssl: expiryLevel(site.sslExpiry, db.settings.sslAlertDays)
+  }));
+
+  /* ---- ToDo ---- */
+  const todoSite = (t) => !t.siteId || siteIds.has(t.siteId);
+  const rank = { urgent: 0, high: 1, normal: 2 };
+  const openTodos = db.todos
+    .filter((t) => todoSite(t) && isOpenTodo(t))
+    .map((t) => ({ ...t, overdue: !!t.dueDate && t.dueDate < asOf }))
+    .sort((a, b) => rank[a.priority] - rank[b.priority] || (a.dueDate || '9999').localeCompare(b.dueDate || '9999'));
+  const doneTodos = db.todos.filter((t) => todoSite(t) && t.status === 'done' && inMonth(t.completedDate));
 
   /* ---- 今月の作業 ---- */
   const works = db.worklogs
@@ -128,7 +141,8 @@ export function buildReport(db, ym) {
     scans: db.serverScans.filter((x) => siteIds.has(x.siteId) && inMonth(x.scanDate) && x.scanDate <= asOf).length,
     backups: db.backups.filter((b) => siteIds.has(b.siteId) && inMonth(b.backupDate) && b.backupDate <= asOf).length,
     works: works.filter((w) => w.kind === 'work').length,
-    troubles: works.filter((w) => w.kind === 'trouble').length
+    troubles: works.filter((w) => w.kind === 'trouble').length,
+    todosDone: doneTodos.length
   };
 
   return {
@@ -148,7 +162,9 @@ export function buildReport(db, ym) {
     groups: { green: byLevel('green'), yellow: byLevel('yellow'), red: byLevel('red'), grey: byLevel('grey') },
     security,
     backups,
-    contracts,
+    infra,
+    openTodos,
+    doneTodos,
     works,
     issues,
     upcoming,
@@ -192,10 +208,13 @@ export function reportToCsvRows(m) {
     b.site.name, formatDate(b.wordpress?.backupDate), formatDate(b.server?.backupDate), formatDate(b.vendor?.backupDate),
     { green: '基準内', yellow: '古い', grey: '未確認' }[b.level], b.restoreVerified ? '確認済み' : '未確認'
   ]));
-  section('サーバー・ドメイン契約の状況', ['契約サービス', '種類', '契約会社', '対象サイト', '費用', '次回更新日', '残り日数', '支払い確認日'], m.contracts.map((c) => [
-    c.serviceName, L.CONTRACT_CATEGORY[c.category], c.company, c.siteNames.join('、'), c.amount != null ? `${L.AMOUNT_UNIT[c.amountUnit]} ${c.amount}` : '',
-    formatDate(c.nextRenewalDate), c.days ?? '', formatDate(c.paymentConfirmedDate)
+  section('サーバー・ドメイン・SSLの状況', ['サイト', 'サーバー会社', 'ドメイン管理会社', 'ドメイン有効期限', 'ドメイン残り日数', 'SSL有効期限', 'SSL残り日数'], m.infra.map((x) => [
+    x.site.name, x.site.serverCompany, x.site.domainRegistrar, formatDate(x.site.domainExpiry), x.domain.days ?? '未登録', formatDate(x.site.sslExpiry), x.ssl.days ?? '未登録'
   ]));
+  section('未完了のToDo', ['やること', 'サイト', '優先度', '状況', '期限', '担当者'], m.openTodos.map((t) => [
+    t.title, t.siteId ? m.siteName(t.siteId) : '全サイト共通', L.PRIORITY[t.priority], L.TODO_STATUS[t.status], formatDate(t.dueDate), t.assignee
+  ]));
+  section('今月完了したToDo', ['やること', 'サイト', '完了日'], m.doneTodos.map((t) => [t.title, t.siteId ? m.siteName(t.siteId) : '全サイト共通', formatDate(t.completedDate)]));
   section('対応中の問題', ['区分', 'サイト', '日付', '内容', '緊急度'], m.issues.map((i) => [i.kind, m.siteName(i.siteId), formatDate(i.date), i.title, LEVEL_MARK[i.level]]));
   section('今後の対応予定（期日あり）', ['日付', '区分', '内容', '対象サイト'], m.upcoming.map((u) => [formatDate(u.date), u.kind, u.title, u.siteIds.map(m.siteName).join('、')]));
   section('今後の対応予定（記入）', null, [[m.plans]]);

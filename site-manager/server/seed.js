@@ -2,6 +2,9 @@
  * 初期データ（初回起動時のみ作成）
  * サイト名・ドメインは仮の名称。画面からいつでも編集できる。
  * 点検記録などは作成しない（未確認のものを「問題なし」と見せないため）。
+ *
+ * チェック項目は「サイトの種類」ごとに持ち、分類（category）で
+ * サイト本体／アカウント／サーバー／ドメイン／SSL／バックアップ／診断 に整理する。
  */
 
 export const DEFAULT_SETTINGS = {
@@ -10,48 +13,78 @@ export const DEFAULT_SETTINGS = {
   inspectionIntervalDays: 31,
   backupStaleDays: 35,
   sslAlertDays: 30,
-  contractAlertDays: 60
+  domainAlertDays: 60
 };
 
+const item = (id, category, label, hint) => ({ id, category, label, hint });
+
+/* ---------- どの種類のサイトにも共通する項目（サーバー・ドメイン・SSL・バックアップ・診断） ---------- */
+const common = (p) => [
+  item(`${p}-srv-panel-2fa`, 'server', 'サーバー管理画面の二段階認証', 'レンタルサーバーの管理画面で二段階認証が有効か'),
+  item(`${p}-srv-accounts`, 'server', 'サーバー・FTPアカウントの棚卸し', '使っていない・退職者・制作会社の不要なアカウントが残っていないか'),
+  item(`${p}-srv-ftp`, 'server', 'ファイル転送の暗号化（SFTP / FTPS）', '暗号化なしのFTPを使っていないか'),
+  item(`${p}-srv-waf`, 'server', 'WAF（不正アクセス防止機能）の有効化', 'サーバー管理画面でWAFが有効になっているか'),
+  item(`${p}-srv-log`, 'server', 'アクセスログ・エラーログの確認', '見覚えのない大量アクセスや不審なエラーがないか'),
+  item(`${p}-srv-files`, 'server', '不審なファイルの有無', '見覚えのないファイル・更新日時が不自然なファイルがないか'),
+  item(`${p}-dom-expiry`, 'domain', 'ドメインの有効期限', '期限切れが近くないか（失効すると第三者に取得されるおそれ）'),
+  item(`${p}-dom-panel-2fa`, 'domain', 'ドメイン管理画面の二段階認証', 'ドメイン管理会社のアカウントで二段階認証が有効か'),
+  item(`${p}-dom-dns`, 'domain', 'DNS設定に不審な変更がないか', '見覚えのないレコード・転送先が追加されていないか'),
+  item(`${p}-dom-mail`, 'domain', 'メールのなりすまし対策（SPF・DKIM・DMARC）', '自社ドメインを使ったなりすましメールへの対策が設定されているか'),
+  item(`${p}-ssl-expiry`, 'ssl', 'SSL証明書の有効期限', 'ブラウザの鍵マークから期限を確認'),
+  item(`${p}-ssl-redirect`, 'ssl', '常時SSL（httpからhttpsへの転送）', 'http:// で開いても https:// に切り替わるか'),
+  item(`${p}-bak-latest`, 'backup', 'バックアップの取得状況', '最新のバックアップが取得できているか'),
+  item(`${p}-bak-restore`, 'backup', '復元手順の確認', 'バックアップから戻す手順が分かる状態か'),
+  item(`${p}-mon-report`, 'monitor', 'セキュリティ診断レポートの確認', '外部診断サービスのレポートを確認したか'),
+  item(`${p}-mon-display`, 'monitor', 'サイトの表示・改ざんの確認', '主要ページが正しく表示され、見覚えのない内容・リンクがないか'),
+  item(`${p}-mon-form`, 'monitor', '問い合わせフォームの動作確認', 'テスト送信し、通知メールが届くか。迷惑送信が急増していないか')
+];
+
 export const DEFAULT_CHECKLISTS = {
+  /* ---------- WordPress ---------- */
   wordpress: [
-    { id: 'wp-core', label: 'WordPress本体の更新確認', hint: '管理画面「ダッシュボード > 更新」で最新版か確認' },
-    { id: 'wp-theme', label: 'テーマの更新確認', hint: 'SWELL本体・子テーマの更新有無' },
-    { id: 'wp-plugins', label: 'プラグインの更新確認', hint: '更新が必要なプラグインの有無' },
-    { id: 'wp-unused-plugins', label: '不要なプラグインの有無', hint: '使っていない・停止中のプラグインが残っていないか' },
-    { id: 'wp-admin-accounts', label: '管理者アカウントの確認', hint: '不明な管理者・退職者のアカウントがないか' },
-    { id: 'wp-2fa', label: '二段階認証の設定確認', hint: 'ログイン時の追加認証が有効か' },
-    { id: 'wp-login-history', label: '不審なログイン履歴の確認', hint: '見覚えのないログインや失敗の急増がないか' },
-    { id: 'wp-display', label: 'サイトの表示確認', hint: 'PC・スマホで主要ページが正しく表示されるか' },
-    { id: 'wp-form', label: '問い合わせフォームの動作確認', hint: 'テスト送信し、通知メールが届くか' },
-    { id: 'wp-backup', label: 'バックアップの取得状況', hint: '最新のバックアップが取得できているか' },
-    { id: 'wp-security-report', label: 'セキュリティ診断レポートの確認', hint: '外部診断サービスのレポートを確認したか' }
+    item('wp-core', 'cms', 'WordPress本体の更新', '管理画面「ダッシュボード > 更新」で最新版か'),
+    item('wp-theme', 'cms', 'テーマの更新', 'SWELL本体・子テーマの更新有無'),
+    item('wp-plugins', 'cms', 'プラグインの更新', '更新が必要なプラグインの有無'),
+    item('wp-unused-plugins', 'cms', '不要なプラグイン・テーマの削除', '停止中・未使用のものが残っていないか（停止だけでなく削除）'),
+    item('wp-plugin-eol', 'cms', '更新が止まったプラグインの有無', '長期間更新されていない・配布終了のプラグインがないか'),
+    item('wp-php', 'cms', 'PHPバージョン', 'サポート期間内のバージョンか（サーバー管理画面で確認）'),
+    item('wp-security-plugin', 'cms', 'セキュリティ対策プラグインの稼働', 'ログイン保護・改ざん検知などが有効か'),
+    item('wp-admin-accounts', 'account', '管理者アカウントの棚卸し', '不明な管理者・退職者・制作会社の不要なアカウントがないか'),
+    item('wp-2fa', 'account', '二段階認証の設定', '管理者アカウントのログインに追加認証があるか'),
+    item('wp-login-history', 'account', '不審なログイン履歴', '見覚えのないログインや失敗の急増がないか'),
+    item('wp-login-protect', 'account', 'ログイン画面の保護', 'ログイン試行回数の制限・画像認証などが有効か'),
+    item('wp-comment-spam', 'cms', 'コメント・投稿の不審な内容', 'スパムコメントや身に覚えのない投稿・固定ページがないか'),
+    ...common('wp')
   ],
+
+  /* ---------- 静的HTML ---------- */
   static: [
-    { id: 'st-display', label: 'サイトの表示確認', hint: 'PC・スマホで主要ページが正しく表示されるか' },
-    { id: 'st-links', label: 'リンク切れの確認', hint: '主要ページのリンク先が開けるか' },
-    { id: 'st-form', label: '問い合わせフォームの動作確認', hint: 'テスト送信し、通知メールが届くか' },
-    { id: 'st-ssl', label: 'SSLの確認', hint: 'ブラウザで鍵マークが表示され、期限が切れていないか' },
-    { id: 'st-server-contract', label: 'サーバー契約の確認', hint: '契約期限・支払い状況' },
-    { id: 'st-backup', label: 'バックアップの確認', hint: '最新のファイル一式が保管されているか' },
-    { id: 'st-security-report', label: 'セキュリティ診断レポートの確認', hint: '外部診断サービスのレポートを確認したか' }
+    item('st-form-program', 'cms', 'フォーム・プログラムの更新', 'メールフォーム等のプログラム（PHP・CGI）が古いまま放置されていないか'),
+    item('st-leftover', 'cms', '不要ファイルが公開されていないか', 'バックアップのzip・テスト用ページ・旧ファイルがサーバーに残っていないか'),
+    item('st-dir-listing', 'cms', 'ファイル一覧が見えないか', 'フォルダのURLを開いてファイル一覧が表示されないか'),
+    item('st-links', 'cms', 'リンク切れ・外部リンク先の確認', 'リンク先が別サイトに変わっていないか'),
+    item('st-external-js', 'cms', '外部から読み込むスクリプトの確認', '使っていない・提供終了した外部サービスのタグが残っていないか'),
+    ...common('st')
   ],
+
+  /* ---------- bears CMS（CMS保守は制作会社） ---------- */
   bears: [
-    { id: 'bc-display', label: 'サイトの表示確認', hint: 'PC・スマホで主要ページが正しく表示されるか' },
-    { id: 'bc-login', label: '編集画面へのログイン確認', hint: '自社の編集アカウントでログインできるか' },
-    { id: 'bc-form', label: '問い合わせフォームの確認', hint: 'テスト送信し、通知メールが届くか' },
-    { id: 'bc-server-payment', label: 'サーバー契約・支払いの確認', hint: '自社担当の契約・支払いが済んでいるか' },
-    { id: 'bc-vendor-maintenance', label: '制作会社によるCMS保守状況の確認', hint: '保守報告・更新状況を制作会社に確認' },
-    { id: 'bc-vendor-questions', label: '制作会社への確認事項', hint: '問い合わせ中・確認待ちの事項がないか' },
-    { id: 'bc-backup-restore', label: 'バックアップ・復旧方法の確認', hint: '制作会社側のバックアップと復旧手順' },
-    { id: 'bc-security-report', label: 'セキュリティ診断レポートの確認', hint: '外部診断サービスのレポートを確認したか' }
+    item('bc-vendor-maintenance', 'vendor', '制作会社によるCMS保守状況', '更新・脆弱性対応の状況を制作会社に確認'),
+    item('bc-vendor-report', 'vendor', '制作会社からの保守報告の確認', '保守報告・障害連絡の有無と内容'),
+    item('bc-vendor-questions', 'vendor', '制作会社への確認事項', '問い合わせ中・回答待ちの事項がないか'),
+    item('bc-vendor-backup', 'vendor', '制作会社側のバックアップ・復旧方法', '取得頻度と、障害時の復旧手順・連絡先'),
+    item('bc-login', 'account', '編集画面へのログイン確認', '自社の編集アカウントでログインできるか'),
+    item('bc-accounts', 'account', '編集アカウントの棚卸し', '使っていない・退職者のアカウントが残っていないか'),
+    item('bc-login-history', 'account', '不審なログイン・更新履歴', '見覚えのない更新がないか'),
+    ...common('bc')
   ],
+
+  /* ---------- その他 ---------- */
   other: [
-    { id: 'ot-display', label: 'サイトの表示確認', hint: 'PC・スマホで主要ページが正しく表示されるか' },
-    { id: 'ot-form', label: '問い合わせフォームの動作確認', hint: 'テスト送信し、通知メールが届くか' },
-    { id: 'ot-ssl', label: 'SSLの確認', hint: '期限が切れていないか' },
-    { id: 'ot-backup', label: 'バックアップの確認', hint: '最新のバックアップがあるか' },
-    { id: 'ot-security-report', label: 'セキュリティ診断レポートの確認', hint: '外部診断サービスのレポートを確認したか' }
+    item('ot-update', 'cms', 'システム・CMSの更新状況', '利用している仕組みが最新か、サポートが続いているか'),
+    item('ot-accounts', 'account', '管理アカウントの棚卸し', '不要なアカウントが残っていないか'),
+    item('ot-2fa', 'account', '二段階認証の設定', '管理画面のログインに追加認証があるか'),
+    ...common('ot')
   ]
 };
 
@@ -64,7 +97,7 @@ export function initialSites() {
     siteType: 'wordpress',
     cmsName: 'WordPress',
     wpTheme: 'SWELL',
-    ownScope: 'WordPress・テーマ・プラグインの更新、日常点検、サーバー契約・支払い',
+    ownScope: 'WordPress・テーマ・プラグインの更新、セキュリティ点検、サーバー・ドメインの管理',
     vendorScope: '',
     notes: `仮登録データ（WordPress ${n}）。サイト名・ドメインを実際の値に修正してください。`
   });
@@ -83,7 +116,7 @@ export function initialSites() {
       siteType: 'static',
       cmsName: 'なし（静的HTML）',
       wpTheme: '',
-      ownScope: 'ページ更新、日常点検、サーバー契約・支払い',
+      ownScope: 'ページ更新、セキュリティ点検、サーバー・ドメインの管理',
       vendorScope: '',
       notes: '仮登録データ（静的HTML）。'
     },
@@ -96,7 +129,7 @@ export function initialSites() {
       wpTheme: '',
       vendor: '制作会社（仮）',
       vendorScope: 'CMSのシステム管理・保守、CMSの更新、障害対応、CMS側のバックアップ',
-      ownScope: '編集画面での記事・ページ更新、サーバー契約・支払い、日常点検',
+      ownScope: '編集画面での記事・ページ更新、サーバー・ドメインの管理、セキュリティ点検',
       notes: '仮登録データ（bears CMS）。CMSの保守は制作会社が担当。'
     }
   ];

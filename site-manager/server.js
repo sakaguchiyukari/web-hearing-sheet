@@ -9,7 +9,7 @@ import http from 'node:http';
 import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Store, newId, nowIso, normalizeDb } from './server/store.js';
+import { Store, newId, nowIso, normalizeDb, migrateDb } from './server/store.js';
 import { Auth } from './server/auth.js';
 import {
   COLLECTIONS, HttpError, validateRecord, validateSettings, validateChecklists, validateReportNote
@@ -124,7 +124,7 @@ const ISO_RE = /^\d{4}-\d{2}-\d{2}T[\d:.]+Z$/;
 
 /** 復元データを検証して、正しい形のDBを作る（不正があれば例外） */
 function buildRestoredDb(input) {
-  const src = normalizeDb(input);
+  const src = normalizeDb(migrateDb(input));
   const db = normalizeDb({});
   db.settings = validateSettings(src.settings);
   db.checklists = validateChecklists(src.checklists);
@@ -191,12 +191,11 @@ async function serveStatic(req, res, pathname) {
 /** サイト削除時に関連データも削除・参照解除する */
 function cascadeDeleteSite(siteId) {
   const db = store.db;
-  for (const name of ['inspections', 'worklogs', 'backups', 'serverScans']) {
+  for (const name of ['inspections', 'worklogs', 'backups', 'serverScans', 'todos']) {
     db[name] = db[name].filter((r) => r.siteId !== siteId);
   }
   const removedReports = db.securityReports.filter((r) => r.siteId === siteId);
   db.securityReports = db.securityReports.filter((r) => r.siteId !== siteId);
-  db.contracts.forEach((c) => { c.siteIds = c.siteIds.filter((id) => id !== siteId); });
   db.securityServices.forEach((s) => { s.targetSiteIds = s.targetSiteIds.filter((id) => id !== siteId); });
   return removedReports.flatMap((r) => r.attachments || []);
 }

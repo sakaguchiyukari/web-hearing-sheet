@@ -10,7 +10,7 @@ import * as L from '../labels.js';
 import { countResults } from '../status.js';
 import { pageHeader, badge, resultBadge, table, openFormModal, openViewModal, toast, confirmDialog, multiline } from '../ui.js';
 import { renderFields, readFields, detectSecrets } from '../form.js';
-import { notifyChanged, deleteRecord, siteLink } from '../editors.js';
+import { notifyChanged, deleteRecord, siteLink, createTodo } from '../editors.js';
 
 /** 結果の件数をバッジで表示 */
 export function inspectionSummary(r) {
@@ -31,7 +31,7 @@ const resultSelect = (value) => html`<select class="input input--select input--s
 
 function itemRow(item, hint = '') {
   const custom = item.itemId.startsWith('custom-');
-  return html`<li class="insp-item" data-item-id="${item.itemId}">
+  return html`<li class="insp-item" data-item-id="${item.itemId}" data-category="${item.category || 'other'}">
     <div class="insp-item__label">
       ${custom
         ? html`<input class="input input--sm insp-item__label-input" type="text" value="${item.label}" maxlength="200" required placeholder="点検項目名を入力" aria-label="追加した点検項目名">`
@@ -45,16 +45,40 @@ function itemRow(item, hint = '') {
 
 /** サイト種類のテンプレートから点検項目を作る（初期値は必ず「未確認」） */
 function templateItems(siteType) {
-  return (state.db.checklists[siteType] || []).map((t) => ({ itemId: t.id, label: t.label, result: 'unchecked', comment: '', hint: t.hint }));
+  return (state.db.checklists[siteType] || []).map((t) => ({ itemId: t.id, category: t.category || 'other', label: t.label, result: 'unchecked', comment: '', hint: t.hint }));
+}
+
+/** 分類ごとに見出しを付けて並べる */
+function groupByCategory(items) {
+  return Object.keys(L.CHECK_CATEGORIES)
+    .map((key) => ({ key, label: L.CHECK_CATEGORIES[key], items: items.filter((it) => (it.category || 'other') === key) }))
+    .filter((g) => g.items.length);
 }
 
 function renderItems(items) {
-  return html`${items.map((it) => itemRow(it, it.hint))}`;
+  return html`${groupByCategory(items).map((g) => html`
+    <li class="insp-group" data-group="${g.key}"><span class="insp-group__title">${g.label}</span><span class="insp-group__count">${g.items.length}項目</span></li>
+    ${g.items.map((it) => itemRow(it, it.hint))}`)}`;
+}
+
+/** 確認済みの項目数を表示 */
+function updateProgress(form) {
+  const all = [...form.querySelectorAll('.insp-item__result')];
+  const checked = all.filter((s) => s.value !== 'unchecked').length;
+  const box = form.querySelector('#insp-progress');
+  if (!box) return;
+  box.textContent = all.length ? `確認済み ${checked} / ${all.length} 項目` : '';
+  const bar = form.querySelector('#insp-progress-bar');
+  if (bar) {
+    bar.max = all.length || 1;
+    bar.value = checked;
+  }
 }
 
 function readItems(form) {
   return [...form.querySelectorAll('.insp-item')].map((li) => ({
     itemId: li.dataset.itemId,
+    category: li.dataset.category || 'other',
     label: li.querySelector('.insp-item__label-input')?.value.trim() || li.querySelector('.insp-item__name')?.dataset.label || '',
     result: li.querySelector('.insp-item__result').value,
     comment: li.querySelector('.insp-item__comment').value.trim()
@@ -84,7 +108,7 @@ export function openInspectionEditor(record = null, presets = {}) {
   const interval = state.db.settings.inspectionIntervalDays;
 
   openFormModal({
-    title: record ? '点検記録を編集' : '点検を記録',
+    title: record ? '点検記録を編集' : 'セキュリティ点検',
     wide: true,
     submitLabel: '点検記録を保存',
     body: html`
@@ -94,6 +118,10 @@ export function openInspectionEditor(record = null, presets = {}) {
         <h3 class="form-section-title">点検項目</h3>
         <p class="insp-head__type" id="insp-type">${site ? `${L.SITE_TYPES[site.siteType]}の点検項目` : 'サイトを選ぶと点検項目が表示されます'}</p>
       </div>
+      <div class="insp-progress">
+        <progress class="insp-progress__bar" id="insp-progress-bar" value="0" max="1"></progress>
+        <span class="insp-progress__text" id="insp-progress" aria-live="polite"></span>
+      </div>
       <div class="insp-legend" aria-hidden="true">
         <span>項目</span><span>結果</span><span>コメント</span>
       </div>
@@ -101,6 +129,11 @@ export function openInspectionEditor(record = null, presets = {}) {
       <button type="button" class="btn btn--ghost btn--sm" id="add-custom-item">＋ 項目を追加（今回のみ）</button>
       ${renderFields(summaryField, values)}
       ${record ? '' : html`<div class="form-grid">
+        <div class="field">
+          <span class="field__label">ToDoへの登録</span>
+          <label class="check"><input class="check__input" type="checkbox" name="createTodos" checked><span class="check__label">「要確認」「対応中」の項目をToDoに登録する</span></label>
+          <p class="field__help">同じ内容の未完了ToDoが既にある場合は重複登録しません</p>
+        </div>
         <div class="field">
           <label class="field__label" for="next-insp">サイトの次回点検予定日を更新</label>
           <input class="input" type="date" id="next-insp" name="nextInspectionDate" value="${addDays(values.date, interval)}">
@@ -119,22 +152,31 @@ export function openInspectionEditor(record = null, presets = {}) {
         }
         list.innerHTML = s ? String(renderItems(templateItems(s.siteType))) : '';
         form.querySelector('#insp-type').textContent = s ? `${L.SITE_TYPES[s.siteType]}の点検項目` : 'サイトを選ぶと点検項目が表示されます';
+        updateProgress(form);
       });
+      updateProgress(form);
       form.date.addEventListener('change', () => {
         const next = form.querySelector('#next-insp');
         if (next && form.date.value) next.value = addDays(form.date.value, interval);
       });
       // 結果の色を更新
       list.addEventListener('change', (e) => {
-        if (e.target.classList.contains('insp-item__result')) e.target.dataset.tone = L.RESULT_TONE[e.target.value];
+        if (e.target.classList.contains('insp-item__result')) {
+          e.target.dataset.tone = L.RESULT_TONE[e.target.value];
+          updateProgress(form);
+        }
       });
       list.addEventListener('click', (e) => {
-        if (e.target.classList.contains('insp-item__remove')) e.target.closest('.insp-item').remove();
+        if (e.target.classList.contains('insp-item__remove')) {
+          e.target.closest('.insp-item').remove();
+          updateProgress(form);
+        }
       });
       form.querySelector('#add-custom-item').addEventListener('click', () => {
         customSeq += 1;
         list.insertAdjacentHTML('beforeend', String(itemRow({ itemId: `custom-${Date.now()}-${customSeq}`, label: '', result: 'unchecked', comment: '' })));
         list.querySelector('.insp-item:last-child .insp-item__label-input').focus();
+        updateProgress(form);
       });
     },
     onSubmit: async (form) => {
@@ -156,7 +198,18 @@ export function openInspectionEditor(record = null, presets = {}) {
         const s = siteById(data.siteId);
         await api('PUT', `/api/c/sites/${s.id}`, { ...s, nextInspectionDate: next });
       }
-      toast('点検記録を保存しました');
+      // 要確認・対応中の項目をToDoに登録（同じ内容の未完了ToDoがあれば登録しない）
+      let created = 0;
+      if (!record && form.createTodos?.checked) {
+        for (const it of data.items.filter((i) => i.result === 'check' || i.result === 'progress')) {
+          const title = `${it.label}（点検で${L.RESULTS[it.result]}）`;
+          const exists = state.db.todos.some((t) => t.siteId === data.siteId && t.status !== 'done' && t.title.startsWith(it.label));
+          if (exists) continue;
+          await createTodo({ title, siteId: data.siteId, category: it.category, status: it.result === 'progress' ? 'progress' : 'open', detail: it.comment, source: `セキュリティ点検 ${formatDate(data.date)}`, assignee: data.inspector });
+          created += 1;
+        }
+      }
+      toast(created ? `点検記録を保存し、ToDoを${created}件登録しました` : '点検記録を保存しました');
       await notifyChanged();
       return true;
     }
@@ -174,6 +227,7 @@ export function openInspectionView(id) {
       <div class="info-list__row"><dt class="info-list__term">担当者</dt><dd class="info-list__desc">${r.inspector}</dd></div>
     </dl>
     ${table([
+      { label: '分類', render: (it) => L.CHECK_CATEGORIES[it.category] || 'その他' },
       { label: '点検項目', render: (it) => it.label },
       { label: '結果', render: (it) => resultBadge(it.result) },
       { label: 'コメント', render: (it) => it.comment || '—' }
@@ -215,8 +269,8 @@ export function renderInspections(root, { query }) {
   if (query.site) filters.siteId = query.site;
   const types = Object.entries(L.SITE_TYPES);
   root.innerHTML = String(html`
-    ${pageHeader('日常点検', 'サイトごとに点検結果を記録します。過去の点検履歴もここから確認できます。',
-      html`<button type="button" class="btn btn--primary" id="add-insp">＋ 点検を記録</button>`)}
+    ${pageHeader('セキュリティ点検', 'サイトの種類ごとのチェックリストで、サイト本体・アカウント・サーバー・ドメイン・SSL・バックアップを確認して記録します。',
+      html`<button type="button" class="btn btn--primary" id="add-insp">＋ 点検する</button>`)}
 
     <section class="card js-fade">
       <form class="toolbar" id="insp-filter" role="search">
@@ -244,7 +298,8 @@ export function renderInspections(root, { query }) {
       <div class="checklist-columns">
         ${types.map(([k, label]) => html`<div class="checklist-col">
           <h3 class="checklist-col__title">${label}</h3>
-          <ol class="checklist-col__list">${(state.db.checklists[k] || []).map((i) => html`<li>${i.label}</li>`)}</ol>
+          ${groupByCategory(state.db.checklists[k] || []).map((g) => html`<p class="checklist-col__group">${g.label}</p>
+            <ul class="checklist-col__list">${g.items.map((i) => html`<li>${i.label}</li>`)}</ul>`)}
         </div>`)}
       </div>
     </section>`);

@@ -50,6 +50,8 @@ export const siteSecurityReports = (db, siteId, asOf = todayStr()) => db.securit
 export const isOpenFinding = (r) => r.result === 'findings' && ['unchecked', 'open', 'progress'].includes(r.responseStatus);
 /** 未解決の不正ファイル検出か */
 export const isOpenScan = (s) => s.result === 'detected' && ['open', 'progress'].includes(s.status);
+/** 未完了のToDoか */
+export const isOpenTodo = (t) => t.status !== 'done';
 /** 未解決のトラブルか */
 export const isOpenTrouble = (w) => w.kind === 'trouble' && w.status !== 'done';
 
@@ -127,14 +129,21 @@ export function siteStatus(db, site, asOf = todayStr()) {
     .filter((w) => w.siteId === site.id && w.occurredDate <= asOf && isOpenTrouble(w))
     .forEach((w) => add(w.priority === 'urgent' ? 'red' : 'yellow', `未解決のトラブルがあります（${formatDate(w.occurredDate)}発生）`));
 
-  /* --- 契約 --- */
-  db.contracts
-    .filter((c) => c.status === 'active' && c.siteIds.includes(site.id) && c.nextRenewalDate)
-    .forEach((c) => {
-      const d = daysBetween(asOf, c.nextRenewalDate);
-      if (d < 0) add('red', `契約「${c.serviceName}」の更新日を過ぎています（更新済みなら次回更新日を修正）`);
-      else if (d <= s.contractAlertDays) add('yellow', `契約「${c.serviceName}」の更新日まであと${d}日です`);
-    });
+  /* --- ドメイン --- */
+  if (site.domainExpiry) {
+    const d = daysBetween(asOf, site.domainExpiry);
+    if (d < 0) add('red', `ドメインの有効期限を過ぎています（${formatDate(site.domainExpiry)}）。更新済みなら期限を修正してください`);
+    else if (d <= s.domainAlertDays) add('yellow', `ドメインの有効期限まであと${d}日です`);
+  } else {
+    add('grey', 'ドメインの有効期限が未登録です');
+  }
+
+  /* --- ToDo --- */
+  const todos = db.todos.filter((t) => t.siteId === site.id && isOpenTodo(t));
+  const overdue = todos.filter((t) => t.dueDate && t.dueDate < asOf);
+  if (todos.some((t) => t.priority === 'urgent')) add('red', '優先度「至急」のToDoが未完了です');
+  if (overdue.length) add('yellow', `期限を過ぎたToDoが${overdue.length}件あります`);
+  else if (todos.length) add('yellow', `未完了のToDoが${todos.length}件あります`);
 
   // 重複する理由をまとめる
   const unique = [];
@@ -208,9 +217,12 @@ export function upcomingEvents(db, withinDays = 90, asOf = todayStr()) {
   const s = db.settings;
   const sites = db.sites.filter((x) => x.active !== 'archived');
 
-  db.contracts.filter((c) => c.status === 'active').forEach((c) => push(c.nextRenewalDate, '契約更新', c.serviceName, c.siteIds, s.contractAlertDays));
+  db.todos.filter(isOpenTodo).forEach((t) => {
+    if (!t.siteId || sites.some((x) => x.id === t.siteId)) push(t.dueDate, 'ToDo', t.title, t.siteId ? [t.siteId] : [], 7);
+  });
   sites.forEach((site) => {
     push(site.sslExpiry, 'SSL期限', 'SSL証明書の有効期限', [site.id], s.sslAlertDays);
+    push(site.domainExpiry, 'ドメイン期限', 'ドメインの有効期限', [site.id], s.domainAlertDays);
     push(site.nextInspectionDate, '点検予定', '次回点検予定日', [site.id], 7);
     const latestReport = siteSecurityReports(db, site.id, asOf)[0];
     if (latestReport) push(latestReport.nextCheckDate, '診断確認', 'セキュリティ診断の次回確認', [site.id], 7);

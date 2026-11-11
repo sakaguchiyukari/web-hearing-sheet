@@ -2,7 +2,7 @@
  * サイト管理台帳（一覧・詳細）
  */
 import { state, siteById, allSitesSorted } from '../state.js';
-import { html, raw, todayStr, formatDate, formatDateTime, formatYen, matchesQuery, byDateDesc, debounce } from '../utils.js';
+import { html, raw, todayStr, formatDate, formatDateTime, matchesQuery, byDateDesc, debounce } from '../utils.js';
 import * as L from '../labels.js';
 import { siteStatus, lastInspectionDate, siteInspections, latestBackups, siteSecurityReports } from '../status.js';
 import { pageHeader, statusBadge, statusDot, badge, table, emptyState, multiline } from '../ui.js';
@@ -10,7 +10,7 @@ import { openRecordEditor, deleteRecord } from '../editors.js';
 import { openInspectionEditor, openInspectionView, inspectionSummary } from './inspections.js';
 import { secResultBadge, scanResultBadge, attachmentLinks } from './security.js';
 import { backupCell } from './backups.js';
-import { renewalBadge } from './contracts.js';
+import { todoCheck, dueBadge, todoSort, toggleTodo } from './todos.js';
 
 /* =========================================================
    一覧
@@ -42,13 +42,15 @@ function siteTable() {
       { label: '最終点検日', render: ({ site }) => formatDate(lastInspectionDate(db, site)) },
       { label: '次回点検予定', hideSm: true, render: ({ site }) => formatDate(site.nextInspectionDate) },
       { label: 'SSL', render: ({ site }) => html`${L.SSL_STATUS[site.sslStatus]}${site.sslExpiry ? html`<span class="cell-sub">期限 ${formatDate(site.sslExpiry)}</span>` : ''}` },
+      { label: 'ドメイン期限', hideSm: true, render: ({ site }) => (site.domainExpiry ? formatDate(site.domainExpiry) : html`<span class="text-muted">未登録</span>`) },
+      { label: 'ToDo', render: ({ site }) => { const n = db.todos.filter((t) => t.siteId === site.id && t.status !== 'done').length; return n ? badge('yellow', `${n}件`) : '—'; } },
       { label: '操作', className: 'col-actions', render: ({ site }) => html`<button type="button" class="btn btn--ghost btn--sm" data-edit="${site.id}">編集</button>` }
     ], rows, { empty: '条件に一致するサイトはありません' })}`;
 }
 
 export function renderSiteList(root) {
   root.innerHTML = String(html`
-    ${pageHeader('サイト管理台帳', 'サイトごとの基本情報・契約・担当範囲を管理します。サイト名をクリックすると詳細を表示します。',
+    ${pageHeader('サイト管理台帳', 'サイトごとの基本情報・サーバー・ドメイン・担当範囲を管理します。サイト名をクリックすると詳細を表示します。',
       html`<button type="button" class="btn btn--primary" id="add-site">＋ サイトを追加</button>`)}
 
     <section class="card js-fade">
@@ -134,8 +136,10 @@ function tabOverview(site) {
         <h3 class="card__subtitle">サーバー・ドメイン・SSL</h3>
         ${infoList([
           ['レンタルサーバー会社', site.serverCompany],
-          ['サーバー契約情報', site.serverContract ? multiline(site.serverContract) : ''],
-          ['ドメイン契約情報', site.domainContract ? multiline(site.domainContract) : ''],
+          ['サーバー情報', site.serverContract ? multiline(site.serverContract) : ''],
+          ['ドメイン管理会社', site.domainRegistrar],
+          ['ドメインの有効期限', site.domainExpiry ? formatDate(site.domainExpiry) : ''],
+          ['ドメイン情報', site.domainContract ? multiline(site.domainContract) : ''],
           ['SSL証明書', L.SSL_STATUS[site.sslStatus]],
           ['SSL有効期限', site.sslExpiry ? formatDate(site.sslExpiry) : ''],
           ['SSL確認日', site.sslCheckedDate ? formatDate(site.sslCheckedDate) : '']
@@ -243,26 +247,27 @@ function tabSecurity(site) {
     </div>`;
 }
 
-function tabContracts(site) {
-  const list = state.db.contracts.filter((c) => c.siteIds.includes(site.id));
+function tabTodos(site) {
+  const list = state.db.todos.filter((t) => t.siteId === site.id).sort(todoSort);
   return html`
-    <div class="tab-actions"><button type="button" class="btn btn--primary btn--sm" data-add-record="contracts">＋ 契約を追加</button></div>
+    <div class="tab-actions"><button type="button" class="btn btn--primary btn--sm" data-add-record="todos">＋ ToDoを追加</button></div>
     ${table([
-      { label: '契約サービス', render: (c) => html`${c.serviceName}<span class="cell-sub">${c.company || ''}・${L.CONTRACT_CATEGORY[c.category]}</span>` },
-      { label: '費用', render: (c) => (c.amount != null ? `${L.AMOUNT_UNIT[c.amountUnit]} ${formatYen(c.amount)}` : '—') },
-      { label: '次回更新日', render: renewalBadge },
-      { label: '共用サイト数', render: (c) => `${c.siteIds.length}サイト` },
-      { label: '操作', className: 'col-actions', render: (c) => html`<button type="button" class="btn btn--ghost btn--sm" data-edit-record="contracts:${c.id}">編集</button>` }
-    ], list, { empty: 'このサイトに紐づく契約はありません' })}`;
+      { label: '完了', className: 'col-status', render: todoCheck },
+      { label: 'やること', render: (t) => html`<span class="${t.status === 'done' ? 'todo-title todo-title--done' : 'todo-title'}">${t.title}</span>${t.detail ? html`<span class="cell-sub">${t.detail}</span>` : ''}` },
+      { label: '分類', hideSm: true, render: (t) => L.CHECK_CATEGORIES[t.category] },
+      { label: '優先度', render: (t) => L.PRIORITY[t.priority] },
+      { label: '期限', render: dueBadge },
+      { label: '操作', className: 'col-actions', render: (t) => html`<button type="button" class="btn btn--ghost btn--sm" data-edit-record="todos:${t.id}">編集</button>` }
+    ], list, { empty: 'このサイトのToDoはありません' })}`;
 }
 
 /** タブ定義（ここに追加すると詳細画面のタブが増える） */
 const TABS = [
   { key: 'overview', label: '概要', render: tabOverview },
+  { key: 'todos', label: 'ToDo', render: tabTodos, count: (s) => state.db.todos.filter((t) => t.siteId === s.id && t.status !== 'done').length },
   { key: 'inspections', label: '点検履歴', render: tabInspections, count: (s) => state.db.inspections.filter((r) => r.siteId === s.id).length },
   { key: 'backups', label: 'バックアップ', render: tabBackups, count: (s) => state.db.backups.filter((r) => r.siteId === s.id).length },
   { key: 'security', label: 'セキュリティ', render: tabSecurity, count: (s) => state.db.securityReports.filter((r) => r.siteId === s.id).length + state.db.serverScans.filter((r) => r.siteId === s.id).length },
-  { key: 'contracts', label: '契約', render: tabContracts, count: (s) => state.db.contracts.filter((c) => c.siteIds.includes(s.id)).length },
   { key: 'worklogs', label: '作業履歴', render: tabWorklogs, count: (s) => state.db.worklogs.filter((r) => r.siteId === s.id).length }
 ];
 
@@ -304,10 +309,10 @@ export function renderSiteDetail(root, { params: [id] }) {
       renderSiteDetail(root, { params: [id] });
       return;
     }
+    if (t.dataset.toggleTodo) toggleTodo(t.dataset.toggleTodo);
     if (t.dataset.viewInspection) openInspectionView(t.dataset.viewInspection);
     if (t.dataset.addRecord) {
-      const presets = t.dataset.addRecord === 'contracts' ? { siteIds: [site.id] }
-        : t.dataset.addRecord === 'securityReports' ? { siteId: site.id, serviceId: state.db.securityServices.find((x) => x.targetSiteIds.includes(site.id))?.id || '' }
+      const presets = t.dataset.addRecord === 'securityReports' ? { siteId: site.id, serviceId: state.db.securityServices.find((x) => x.targetSiteIds.includes(site.id))?.id || '' }
           : { siteId: site.id };
       if (t.dataset.addRecord === 'backups') presets.kind = site.siteType === 'wordpress' ? 'wordpress' : site.siteType === 'bears' ? 'vendor' : 'server';
       openRecordEditor(t.dataset.addRecord, null, presets);

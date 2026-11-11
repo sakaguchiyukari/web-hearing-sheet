@@ -103,35 +103,6 @@ export const RESTORE_VERIFIED = {
   no: '未実施'
 };
 
-/* 契約・支払い */
-export const CONTRACT_CATEGORY = {
-  server: 'レンタルサーバー',
-  domain: 'ドメイン',
-  ssl: 'SSL証明書',
-  maintenance: '保守契約',
-  security: 'セキュリティ診断',
-  other: 'その他'
-};
-
-export const AMOUNT_UNIT = {
-  month: '月額',
-  year: '年額',
-  once: '一括',
-  other: 'その他'
-};
-
-export const PAYMENT_CYCLE = {
-  monthly: '毎月',
-  yearly: '毎年',
-  multiyear: '複数年',
-  other: 'その他'
-};
-
-export const CONTRACT_STATUS = {
-  active: '契約中',
-  ended: '解約済み'
-};
-
 /* 作業履歴・トラブル */
 export const WORK_KIND = {
   work: '作業',
@@ -149,4 +120,25 @@ export const PRIORITY = {
   normal: '通常',
   high: '高',
   urgent: '至急'
+};
+
+/* ToDo（対応リスト） */
+export const TODO_STATUS = {
+  open: '未着手',
+  progress: '対応中',
+  hold: '保留',
+  done: '完了'
+};
+
+/* チェック項目・ToDoの分類 */
+export const CHECK_CATEGORIES = {
+  cms: 'サイト本体・CMS',
+  account: 'アカウント・ログイン',
+  server: 'サーバー',
+  domain: 'ドメイン・DNS',
+  ssl: 'SSL・通信',
+  backup: 'バックアップ',
+  monitor: '診断・監視',
+  vendor: '制作会社',
+  other: 'その他'
 };

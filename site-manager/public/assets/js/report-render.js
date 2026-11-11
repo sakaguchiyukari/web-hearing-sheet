@@ -2,7 +2,7 @@
  * 月次報告書のHTML生成（A4縦・社内提出用）
  * 上司が専門知識なしで読めるよう、各章に「この項目の意味」を一文で添える。
  */
-import { html, formatDate, formatYen, daysLeftText } from './utils.js';
+import { html, formatDate, daysLeftText } from './utils.js';
 import * as L from './labels.js';
 import { GLOSSARY, LEVEL_MARK, countsText } from './report-model.js';
 
@@ -51,7 +51,7 @@ export function renderReport(m) {
     ${section('今月のまとめ', '今月確認したこと、問題がなかったもの、対応が必要なもの・未確認のものを整理しています。', html`
       <div class="report__lead-box">
         <p>管理対象 <strong>${m.sites.length}サイト</strong> のうち、今月は <strong>${c.inspectedSites}サイト</strong> で日常点検（計${c.inspections}回）を実施しました。</p>
-        <p>そのほか、セキュリティ診断結果の確認 ${c.securityReports}件、サーバー内部の検査 ${c.scans}件、バックアップの記録 ${c.backups}件、作業 ${c.works}件、トラブル対応 ${c.troubles}件 を記録しています。</p>
+        <p>そのほか、セキュリティ診断結果の確認 ${c.securityReports}件、サーバー内部の検査 ${c.scans}件、バックアップの記録 ${c.backups}件、作業 ${c.works}件、トラブル対応 ${c.troubles}件、ToDoの完了 ${c.todosDone}件 を記録しています。</p>
         <p>現在の状態は、問題なし <strong>${g.green.length}</strong>、対応が必要 <strong>${need.length}</strong>（うち至急 ${g.red.length}）、未確認 <strong>${g.grey.length}</strong> サイトです。対応中の問題は <strong>${m.issues.length}件</strong> です。</p>
       </div>
       <div class="report__summary">
@@ -79,8 +79,8 @@ export function renderReport(m) {
       [
         ...m.breakdown.map((b) => [b.label, `${b.count}サイト`, {
           wordpress: '更新の多い一般的な仕組み。本体・テーマ・プラグインの更新確認が必要',
-          static: '管理システムを使わないサイト。表示・リンク・契約の確認が中心',
-          bears: 'CMSの保守は制作会社が担当。自社は編集と契約・支払いを担当',
+          static: '管理システムを使わないサイト。不要ファイル・フォームのプログラム・サーバー設定の確認が中心',
+          bears: 'CMSの保守は制作会社が担当。自社は編集とサーバー・ドメインの管理を担当',
           other: 'その他の仕組みで作られたサイト'
         }[b.type]]),
         [html`<strong>合計</strong>`, html`<strong>${m.sites.length}サイト</strong>`, '']
@@ -95,7 +95,7 @@ export function renderReport(m) {
       : none('今月の点検記録はありません。'))}
 
     <!-- ===== 4. 点検結果（サイト別の状態） ===== -->
-    ${section('点検結果とサイト別の状態', '点検・SSL・バックアップ・セキュリティ診断・契約の記録から判定した、各サイトの現在の状態です。', reportTable(
+    ${section('点検結果とサイト別の状態', '点検・SSL・ドメイン・バックアップ・セキュリティ診断・ToDoの記録から判定した、各サイトの現在の状態です。', reportTable(
       ['サイト', '種類', '今月の点検', '最終点検日', '状態', '主な理由'],
       m.siteRows.map((r) => [
         r.site.name, L.SITE_TYPES[r.site.siteType], r.inspectedThisMonth ? '実施' : mark('grey', '未実施'),
@@ -129,19 +129,32 @@ export function renderReport(m) {
       ])
     ))}
 
-    <!-- ===== 7. 契約 ===== -->
-    ${section('サーバー・ドメイン契約の状況', 'サイトを動かすために必要な契約です。更新日を過ぎるとサイトが表示されなくなるおそれがあります。', m.contracts.length
-      ? reportTable(['契約サービス', '種類', '対象サイト', '費用', '次回更新日', '支払い確認'], m.contracts.map((ct) => [
-        html`${ct.serviceName}${ct.company ? html`<br><small>${ct.company}</small>` : ''}`,
-        L.CONTRACT_CATEGORY[ct.category],
-        ct.siteNames.join('、') || '—',
-        ct.amount != null ? `${L.AMOUNT_UNIT[ct.amountUnit]} ${formatYen(ct.amount)}` : '—',
-        ct.nextRenewalDate ? html`${mark(ct.level, formatDate(ct.nextRenewalDate))}<br><small>${daysLeftText(ct.days)}</small>` : mark('grey', '未登録'),
-        formatDate(ct.paymentConfirmedDate)
-      ]))
-      : none('契約は登録されていません。'))}
+    <!-- ===== 7. サーバー・ドメイン・SSL ===== -->
+    ${section('サーバー・ドメイン・SSLの状況', 'ドメイン（サイトの住所）やSSL証明書（通信の暗号化）の期限が切れると、サイトが表示されなくなったり、第三者に悪用されるおそれがあります。期限が未登録のものは「未登録」です。', reportTable(
+      ['サイト', 'サーバー会社', 'ドメイン管理会社', 'ドメイン有効期限', 'SSL有効期限'],
+      m.infra.map((x) => [
+        x.site.name,
+        x.site.serverCompany || '—',
+        x.site.domainRegistrar || '—',
+        x.site.domainExpiry ? html`${mark(x.domain.level, formatDate(x.site.domainExpiry))}<br><small>${daysLeftText(x.domain.days)}</small>` : mark('grey', '未登録'),
+        x.site.sslExpiry ? html`${mark(x.ssl.level, formatDate(x.site.sslExpiry))}<br><small>${daysLeftText(x.ssl.days)}</small>` : mark('grey', '未登録')
+      ])
+    ))}
 
-    <!-- ===== 8. 対応中の問題 ===== -->
+    <!-- ===== ToDo ===== -->
+    ${section('ToDo（対応リスト）の状況', `対応が必要な作業の一覧です。今月完了したものは ${m.doneTodos.length}件、未完了は ${m.openTodos.length}件（うち期限超過 ${m.openTodos.filter((t) => t.overdue).length}件）です。`, html`
+      ${m.openTodos.length
+        ? reportTable(['やること', 'サイト', '優先度', '状況', '期限', '担当者'], m.openTodos.map((t) => [
+          t.title, t.siteId ? m.siteName(t.siteId) : '全サイト共通',
+          t.priority === 'normal' ? L.PRIORITY[t.priority] : mark(t.priority === 'urgent' ? 'red' : 'yellow', L.PRIORITY[t.priority]),
+          L.TODO_STATUS[t.status],
+          t.dueDate ? (t.overdue ? mark('red', `${formatDate(t.dueDate)} 超過`) : formatDate(t.dueDate)) : '—',
+          t.assignee || '—'
+        ]))
+        : none('未完了のToDoはありません。')}
+      ${m.doneTodos.length ? html`<p class="report__explain">今月完了：${m.doneTodos.map((t) => t.title).join('／')}</p>` : ''}`)}
+
+    <!-- ===== 対応中の問題 ===== -->
     ${section('対応中の問題', '解決していないトラブル、診断での指摘、点検で「要確認・対応中」となった項目です。', m.issues.length
       ? reportTable(['緊急度', '区分', 'サイト', '発生・確認日', '内容'], m.issues.map((i) => [
         mark(i.level), i.kind, m.siteName(i.siteId), formatDate(i.date), i.title

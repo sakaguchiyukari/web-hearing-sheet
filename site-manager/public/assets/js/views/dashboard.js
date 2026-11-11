@@ -5,7 +5,8 @@
 import { state, activeSites, siteName } from '../state.js';
 import { html, todayStr, currentMonth, formatDate, byDateDesc } from '../utils.js';
 import { STATUS_LEVELS, SITE_TYPES, WORK_KIND, WORK_STATUS } from '../labels.js';
-import { siteStatus, needsInspection, openIssues, upcomingEvents, backupAlerts, lastInspectionDate } from '../status.js';
+import { siteStatus, needsInspection, openIssues, upcomingEvents, backupAlerts, lastInspectionDate, isOpenTodo } from '../status.js';
+import { todoCheck, dueBadge, todoSort, toggleTodo } from './todos.js';
 import { pageHeader, statusBadge, statusDot, badge, emptyState } from '../ui.js';
 import { siteLink } from '../editors.js';
 
@@ -33,6 +34,8 @@ export function renderDashboard(root) {
   const upcoming = upcomingEvents(db, 90, today).slice(0, 8);
   const recent = [...db.worklogs].sort(byDateDesc('occurredDate')).slice(0, 6);
   const bAlerts = backupAlerts(db, today);
+  const openTodos = db.todos.filter(isOpenTodo).sort(todoSort);
+  const overdueTodos = openTodos.filter((t) => t.dueDate && t.dueDate < today);
 
   // 表示順：赤 → 黄 → グレー → 緑
   const order = { red: 0, yellow: 1, grey: 2, green: 3 };
@@ -51,6 +54,7 @@ export function renderDashboard(root) {
         ${statCard('その他CMS', typeCount('bears') + typeCount('other'), `bears CMS ${typeCount('bears')}・その他 ${typeCount('other')}`)}
         ${statCard('今月の点検済み', `${inspectedThisMonth} / ${sites.length}`, '今月1回以上点検したサイト', inspectedThisMonth === sites.length && sites.length ? 'green' : '')}
         ${statCard('点検が必要', needInspection.length, '未点検・期限超過・予定日到来', needInspection.length ? 'yellow' : 'green')}
+        ${statCard('未完了のToDo', openTodos.length, overdueTodos.length ? `うち期限超過 ${overdueTodos.length}件` : '期限超過なし', overdueTodos.length ? 'red' : openTodos.length ? 'yellow' : 'green')}
         ${statCard('対応中の問題', issues.length, 'トラブル・診断指摘・点検の要確認', issues.some((i) => i.level === 'red') ? 'red' : issues.length ? 'yellow' : 'green')}
       </div>
     </section>
@@ -83,6 +87,25 @@ export function renderDashboard(root) {
         </ul>` : emptyState('運用中のサイトがありません。', html`<a class="btn btn--primary" href="#/sites">サイトを登録する</a>`)}
     </section>
 
+    <!-- ===== ToDo ===== -->
+    <section class="section card js-fade" aria-labelledby="todo-title">
+      <div class="card__header">
+        <h2 class="card__title" id="todo-title">やること（ToDo）</h2>
+        <a class="link" href="#/todos">すべて見る（${openTodos.length}件） →</a>
+      </div>
+      ${openTodos.length ? html`<ul class="item-list">
+        ${openTodos.slice(0, 6).map((t) => html`
+          <li class="item-list__row">
+            ${todoCheck(t)}
+            <div class="item-list__body">
+              <p class="item-list__title">${t.priority !== 'normal' ? badge(t.priority === 'urgent' ? 'red' : 'yellow', t.priority === 'urgent' ? '至急' : '優先') : ''} ${t.title}</p>
+              <p class="item-list__meta">${t.siteId ? siteLink(t.siteId) : '全サイト共通'}${t.assignee ? `・${t.assignee}` : ''}</p>
+            </div>
+            <div class="item-list__side">${dueBadge(t)}</div>
+          </li>`)}
+      </ul>` : emptyState('未完了のToDoはありません。点検で「要確認」にした項目は自動でここに追加されます。')}
+    </section>
+
     <div class="dash-grid">
       <!-- ===== 対応中の問題 ===== -->
       <section class="card js-fade" aria-labelledby="issue-title">
@@ -106,7 +129,7 @@ export function renderDashboard(root) {
       <!-- ===== 今後の予定 ===== -->
       <section class="card js-fade" aria-labelledby="upcoming-title">
         <div class="card__header">
-          <h2 class="card__title" id="upcoming-title">次回の更新・契約確認予定</h2>
+          <h2 class="card__title" id="upcoming-title">期限・予定（ドメイン・SSL・点検・ToDo）</h2>
           <span class="card__count">90日以内</span>
         </div>
         ${upcoming.length ? html`<ul class="item-list">
@@ -118,7 +141,7 @@ export function renderDashboard(root) {
                 <p class="item-list__meta">${u.siteIds.length ? u.siteIds.map((id) => siteName(id)).join('、') : '対象サイト未設定'}</p>
               </div>
             </li>`)}
-        </ul>` : emptyState('90日以内の予定はありません。契約やSSLの期限を登録すると表示されます。')}
+        </ul>` : emptyState('90日以内の予定はありません。ドメインやSSLの期限を登録すると表示されます。')}
       </section>
 
       <!-- ===== 点検が必要なサイト ===== -->
@@ -178,4 +201,9 @@ export function renderDashboard(root) {
       </ul>` : emptyState('作業履歴はまだありません。')}
     </section>
   `);
+
+  root.onclick = (e) => {
+    const b = e.target.closest('[data-toggle-todo]');
+    if (b) toggleTodo(b.dataset.toggleTodo);
+  };
 }

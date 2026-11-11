@@ -10,7 +10,7 @@ import { randomUUID } from 'node:crypto';
 import { COLLECTIONS } from './schema.js';
 import { DEFAULT_SETTINGS, DEFAULT_CHECKLISTS, initialSites } from './seed.js';
 
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 const SNAPSHOT_KEEP = 30;
 
 export const newId = () => randomUUID();
@@ -20,6 +20,37 @@ export const nowIso = () => new Date().toISOString();
 export function emptyDb() {
   const db = { version: DB_VERSION, settings: { ...DEFAULT_SETTINGS }, checklists: structuredClone(DEFAULT_CHECKLISTS), reportNotes: {}, attachments: [] };
   for (const name of Object.keys(COLLECTIONS)) db[name] = [];
+  return db;
+}
+
+/* v1 の標準チェック項目ID（v2 の標準項目に置き換える対象） */
+const V1_ITEM_IDS = [
+  'wp-core', 'wp-theme', 'wp-plugins', 'wp-unused-plugins', 'wp-admin-accounts', 'wp-2fa', 'wp-login-history', 'wp-display', 'wp-form', 'wp-backup', 'wp-security-report',
+  'st-display', 'st-links', 'st-form', 'st-ssl', 'st-server-contract', 'st-backup', 'st-security-report',
+  'bc-display', 'bc-login', 'bc-form', 'bc-server-payment', 'bc-vendor-maintenance', 'bc-vendor-questions', 'bc-backup-restore', 'bc-security-report',
+  'ot-display', 'ot-form', 'ot-ssl', 'ot-backup', 'ot-security-report'
+];
+
+/**
+ * 旧バージョンのデータを現在の形に変換する
+ * v1 → v2：契約・支払い管理を廃止、チェック項目に分類を追加してセキュリティ特化の項目へ入れ替え
+ */
+export function migrateDb(input) {
+  const version = Number(input.version) || 1;
+  if (version >= DB_VERSION) return input;
+  const db = { ...input };
+  delete db.contracts;
+  if (db.settings && db.settings.domainAlertDays === undefined) {
+    db.settings = { ...db.settings, domainAlertDays: db.settings.contractAlertDays ?? DEFAULT_SETTINGS.domainAlertDays };
+    delete db.settings.contractAlertDays;
+  }
+  // 新しい標準項目を使い、利用者が独自に追加していた項目（IDが標準にないもの）は末尾に残す
+  const old = db.checklists || {};
+  db.checklists = Object.fromEntries(Object.entries(DEFAULT_CHECKLISTS).map(([type, defaults]) => {
+    const known = new Set([...V1_ITEM_IDS, ...defaults.map((it) => it.id)]);
+    const custom = (old[type] || []).filter((it) => it && it.id && !known.has(it.id)).map((it) => ({ category: 'other', ...it }));
+    return [type, [...structuredClone(defaults), ...custom]];
+  }));
   return db;
 }
 
@@ -52,8 +83,11 @@ export class Store {
     await mkdir(this.attachmentsDir, { recursive: true });
     await mkdir(this.backupsDir, { recursive: true });
     if (existsSync(this.dbPath)) {
-      const raw = await readFile(this.dbPath, 'utf8');
-      this.db = normalizeDb(JSON.parse(raw));
+      const raw = JSON.parse(await readFile(this.dbPath, 'utf8'));
+      const needsMigration = (Number(raw.version) || 1) < DB_VERSION;
+      if (needsMigration) await this.snapshot(`before-v${DB_VERSION}`);
+      this.db = normalizeDb(migrateDb(raw));
+      if (needsMigration) await this.save();
     } else {
       this.db = emptyDb();
       const now = nowIso();
